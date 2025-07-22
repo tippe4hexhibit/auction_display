@@ -102,8 +102,12 @@ async def upload_buyer_list(file: UploadFile = File(...), db: Session = Depends(
     df.replace({np.nan: None}, inplace=True)
     
     for _, row in df.iterrows():
+        identifier_value = row.get("Identifier")
+        if identifier_value is None or pd.isna(identifier_value):
+            identifier_value = 0
+        
         buyer = Buyer(
-            identifier=int(row.get("Identifier", 0)),
+            identifier=int(identifier_value),
             name=str(row.get("Name", ""))
         )
         db.add(buyer)
