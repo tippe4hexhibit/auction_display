@@ -4,6 +4,11 @@ export default {
   plugins: [svelte()],
   server: {
     port: 5173,
-    strictPort: true
+    strictPort: true,
+    host: true,
+    allowedHosts: [
+      'auction-display-app-tunnel-6k9tntu5.devinapps.com',
+      '.devinapps.com'
+    ]
   }
 };

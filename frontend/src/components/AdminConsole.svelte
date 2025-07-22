@@ -1,5 +1,10 @@
 <script>
   import { onMount } from 'svelte';
+  import MainControl from './MainControl.svelte';
+  import SaleList from './SaleList.svelte';
+  import BuyerList from './BuyerList.svelte';
+  import { makeAuthenticatedRequest } from '../utils/auth.js';
+  
   let lot = {};
   let bidderNumber = '';
   let ws;
@@ -7,8 +12,51 @@
   let buyerData = [];
   let bidHistory = [];
   let logMessages = [];
+  let pacing = null;
   let currentTab = 'main';
   const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+
+  async function fetchSaleData() {
+    try {
+      const res = await fetch(`${API_BASE}/api/sale`);
+      const data = await res.json();
+      saleData = Array.isArray(data) ? data : [];
+    } catch (error) {
+      console.error('Failed to fetch sale data:', error);
+      saleData = [];
+    }
+  }
+
+  async function fetchBuyerData() {
+    try {
+      const res = await fetch(`${API_BASE}/api/buyers`);
+      const data = await res.json();
+      buyerData = Array.isArray(data) ? data : [];
+    } catch (error) {
+      console.error('Failed to fetch buyer data:', error);
+      buyerData = [];
+    }
+  }
+
+  async function fetchCurrentState() {
+    try {
+      const stateRes = await fetch(`${API_BASE}/api/state`);
+      const stateData = await stateRes.json();
+      if (stateData.lot) {
+        lot = stateData.lot;
+        if (stateData.bidders && stateData.bidders.length > 0) {
+          bidHistory = stateData.bidders.map(bidder => ({
+            LotNumber: lot.LotNumber,
+            StudentName: lot.StudentName,
+            BuyerNumber: bidder.Identifier,
+            BuyerName: bidder.Name
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch current state:', error);
+    }
+  }
 
   onMount(() => {
     ws = new WebSocket(API_BASE.replace('http', 'ws') + '/ws');
@@ -16,130 +64,164 @@
       const data = JSON.parse(event.data);
       const timestamp = new Date().toLocaleTimeString();
       if (data.type === 'log' && data.message) {
-        logMessages.push(`${timestamp}: ${data.message}`);
+        logMessages = [...logMessages, `${timestamp}: ${data.message}`];
       }
 
-      if (data.type === 'state') {
-        lot = data.lot || {};
-        if (data.bidders && data.bidders.length > 0) {
-          bidHistory.push({
+      if (data.lot) lot = data.lot;
+      if (data.pacing) pacing = data.pacing;
+      if (Array.isArray(data.bidders)) {
+        bidHistory = [
+          ...bidHistory,
+          {
             LotNumber: lot.LotNumber,
             StudentName: lot.StudentName,
-            BuyerNumber: data.bidders[data.bidders.length - 1]?.Identifier,
-            BuyerName: data.bidders[data.bidders.length - 1]?.Name
-          });
-          if (bidHistory.length > 15) bidHistory.shift();
-        }
+            BuyerNumber: data.bidders.at(-1)?.Identifier,
+            BuyerName: data.bidders.at(-1)?.Name
+          }
+        ].slice(-15);
       }
     };
+    
+    // Fetch initial data on mount
+    fetchSaleData();
+    fetchBuyerData();
+    fetchCurrentState();
   });
 
   async function addBidder() {
     if (bidderNumber) {
-      await fetch(`${API_BASE}/api/bidder/add/${bidderNumber}`, { method: 'POST' });
-      bidderNumber = '';
+      try {
+        await makeAuthenticatedRequest(`${API_BASE}/api/bidder/add/${bidderNumber}`, { method: 'POST' });
+        bidderNumber = '';
+      } catch (error) {
+        alert('Failed to add bidder: ' + error.message);
+      }
     }
   }
 
   async function nextLot() {
-    await fetch(`${API_BASE}/api/lot/next`, { method: 'POST' });
+    try {
+      await makeAuthenticatedRequest(`${API_BASE}/api/lot/next`, { method: 'POST' });
+    } catch (error) {
+      alert('Failed to navigate to next lot: ' + error.message);
+    }
   }
 
   async function prevLot() {
-    await fetch(`${API_BASE}/api/lot/prev`, { method: 'POST' });
+    try {
+      await makeAuthenticatedRequest(`${API_BASE}/api/lot/prev`, { method: 'POST' });
+    } catch (error) {
+      alert('Failed to navigate to previous lot: ' + error.message);
+    }
   }
 
   async function handleFileUpload(files, endpoint) {
-    const formData = new FormData();
-    formData.append('file', files[0]);
-    await fetch(`${API_BASE}${endpoint}`, { method: 'POST', body: formData });
-    alert('Upload complete');
+    try {
+      const formData = new FormData();
+      formData.append('file', files[0]);
+      const response = await makeAuthenticatedRequest(`${API_BASE}${endpoint}`, { 
+        method: 'POST', 
+        body: formData,
+        headers: {} // Don't set Content-Type, let browser set it for FormData
+      });
+      if (response.ok) {
+        alert('Upload complete');
+        await fetchSaleData();
+        await fetchBuyerData();
+      } else {
+        const error = await response.json();
+        alert(`Upload failed: ${error.detail}`);
+      }
+    } catch (error) {
+      alert('Upload failed: ' + error.message);
+    }
+  }
+
+  async function handleUndoBidder() {
+    try {
+      const response = await makeAuthenticatedRequest(`${API_BASE}/api/bidder/undo`, {
+        method: 'POST'
+      });
+      if (response.ok) {
+        const result = await response.json();
+        alert(result.message);
+      } else {
+        const error = await response.json();
+        alert(`Undo failed: ${error.detail}`);
+      }
+    } catch (error) {
+      alert('Undo failed: ' + error.message);
+    }
+  }
+
+  async function handleMergeBidders(sourceId, targetId) {
+    try {
+      const response = await makeAuthenticatedRequest(`${API_BASE}/api/bidder/merge`, {
+        method: 'POST',
+        body: JSON.stringify({
+          source_identifier: sourceId,
+          target_identifier: targetId
+        })
+      });
+      if (response.ok) {
+        const result = await response.json();
+        alert(result.message);
+      } else {
+        const error = await response.json();
+        alert(`Merge failed: ${error.detail}`);
+      }
+    } catch (error) {
+      alert('Merge failed: ' + error.message);
+    }
   }
 </script>
 
 <style>
-  .tab-buttons button { margin-right: 0.5rem; }
-  .section { margin: 1rem 0; padding: 1rem; border: 1px solid #ccc; border-radius: 8px; background: #f9f9f9; }
-  .drop-zone { border: 2px dashed #888; padding: 2rem; margin-top: 1rem; text-align: center; background: #fff; font-weight: bold; color: #555; }
-  .drop-zone:hover { background: #eef; border-color: #55f; cursor: pointer; }
-  .log-box { border:1px solid #ccc; height:150px; overflow-y:scroll; background: #000; color: #0f0; font-family: monospace; padding: 0.5rem; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { padding: 0.5rem; border: 1px solid #aaa; text-align: left; }
+  .tab-buttons { margin-bottom: 1rem; }
+  .tab-buttons button { 
+    margin-right: 0.5rem; 
+    padding: 0.5rem 1rem; 
+    background: #f8f9fa; 
+    border: 1px solid #dee2e6; 
+    border-radius: 4px; 
+    cursor: pointer; 
+  }
+  .tab-buttons button.active { 
+    background: #007bff; 
+    color: white; 
+    border-color: #007bff; 
+  }
+  .tab-buttons button:hover:not(.active) { 
+    background: #e9ecef; 
+  }
 </style>
 
 <div>
   <h2>Admin Console</h2>
 
   <div class="tab-buttons">
-    <button on:click={() => currentTab = 'main'}>Main</button>
-    <button on:click={() => currentTab = 'sale'}>Sale List</button>
-    <button on:click={() => currentTab = 'buyers'}>Buyer List</button>
+    <button class:active={currentTab === 'main'} on:click={() => currentTab = 'main'}>Main Control</button>
+    <button class:active={currentTab === 'sale'} on:click={() => currentTab = 'sale'}>Sale List</button>
+    <button class:active={currentTab === 'buyers'} on:click={() => currentTab = 'buyers'}>Buyer List</button>
   </div>
 
   {#if currentTab === 'main'}
-    <div class="section">
-      {#if !saleData.length}
-        <p style="text-align:center; font-style:italic;">No sale data loaded.</p>
-      {:else}
-        <p><strong>Current Lot:</strong> {lot?.LotNumber} - {lot?.StudentName} ({lot?.Department})</p>
-        <button on:click={prevLot}>Previous Lot</button>
-        <button on:click={nextLot}>Next Lot</button>
-        <input placeholder="Enter Bidder Number" bind:value={bidderNumber} on:keypress={(e) => e.key === 'Enter' && addBidder()} />
-        <button on:click={addBidder}>Add Bidder</button>
-      {/if}
-    </div>
-
-    <div class="section">
-      <h3>Upload Files</h3>
-      <div class="drop-zone"
-           on:drop={(e) => { e.preventDefault(); handleFileUpload(e.dataTransfer.files, '/api/upload/sale_program'); }}
-           on:dragover={(e) => e.preventDefault()}>
-        Drag & drop Sale Program Excel file here
-      </div>
-      <div class="drop-zone"
-           on:drop={(e) => { e.preventDefault(); handleFileUpload(e.dataTransfer.files, '/api/upload/buyer_list'); }}
-           on:dragover={(e) => e.preventDefault()}>
-        Drag & drop Buyer List Excel file here
-      </div>
-    </div>
-
-    <div class="section">
-      <h3>Recent Entries</h3>
-      <table>
-        <tr><th>Lot</th><th>Student</th><th>Buyer #</th><th>Buyer Name</th></tr>
-        {#each [...bidHistory].reverse() as entry}
-          {#if entry.LotNumber && entry.StudentName && entry.BuyerNumber && entry.BuyerName}
-            <tr><td>{entry.LotNumber}</td><td>{entry.StudentName}</td><td>{entry.BuyerNumber}</td><td>{entry.BuyerName}</td></tr>
-          {/if}
-        {/each}
-      </table>
-    </div>
-
-    <div class="section">
-      <h3>Log</h3>
-      <div class="log-box">
-        {#each [...logMessages].reverse() as msg}
-          <div>{msg}</div>
-        {/each}
-      </div>
-    </div>
+    <MainControl 
+      {lot} 
+      bind:bidderNumber 
+      {bidHistory} 
+      {logMessages}
+      {pacing}
+      onAddBidder={addBidder}
+      onNextLot={nextLot}
+      onPrevLot={prevLot}
+      onFileUpload={handleFileUpload}
+      onUndoBidder={handleUndoBidder}
+      onMergeBidders={handleMergeBidders}
+    />
   {:else if currentTab === 'sale'}
-    <div class="section">
-      <h3>Sale List</h3>
-      <div style="height:300px; overflow-y:scroll;">
-        {#each saleData as item}
-          <div>{item.LotNumber} - {item.StudentName} ({item.Department})</div>
-        {/each}
-      </div>
-    </div>
+    <SaleList {saleData} />
   {:else if currentTab === 'buyers'}
-    <div class="section">
-      <h3>Buyer List</h3>
-      <div style="height:300px; overflow-y:scroll;">
-        {#each buyerData as buyer}
-          <div>{buyer.Identifier} - {buyer.Name}</div>
-        {/each}
-      </div>
-    </div>
+    <BuyerList {buyerData} />
   {/if}
 </div>
