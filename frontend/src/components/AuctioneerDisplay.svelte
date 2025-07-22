@@ -3,15 +3,35 @@
     let lot = {};
     let bidders = [];
     let currentBidder = null;
+    const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+
+    async function fetchInitialState() {
+        try {
+            const stateRes = await fetch(`${API_BASE}/api/state`);
+            const stateData = await stateRes.json();
+            if (stateData.lot) {
+                lot = stateData.lot;
+                bidders = stateData.bidders || [];
+                currentBidder = bidders[bidders.length - 1] || null;
+            }
+        } catch (error) {
+            console.error('Failed to fetch initial state:', error);
+        }
+    }
 
     onMount(() => {
-        const ws = new WebSocket('ws://localhost:8000/ws');
+        const ws = new WebSocket(API_BASE.replace('http', 'ws') + '/ws');
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            lot = data.lot;
-            bidders = data.bidders;
-            currentBidder = bidders[bidders.length - 1] || null;
+            if (data.lot) lot = data.lot;
+            if (Array.isArray(data.bidders)) {
+                bidders = data.bidders;
+                currentBidder = bidders[bidders.length - 1] || null;
+            }
         };
+        
+        // Fetch initial data on mount
+        fetchInitialState();
     });
 </script>
 

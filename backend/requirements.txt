@@ -4,3 +4,6 @@ pandas
 openpyxl
 xlsxwriter
 python-multipart
+sqlalchemy
+python-jose[cryptography]
+passlib[bcrypt]
