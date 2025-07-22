@@ -5,7 +5,6 @@ import numpy as np
 from fastapi import FastAPI, WebSocket, UploadFile, File, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import pandas as pd
 import uvicorn
@@ -16,7 +15,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 from database import (
     init_database, get_db, get_or_create_session,
-    SaleProgram, Buyer, BidderLot, AuctionSession, LotImage, PacingStats
+    SaleProgram, Buyer, BidderLot, AuctionSession
 )
 from auth import authenticate_user, create_access_token, require_auth
 
@@ -49,10 +48,6 @@ logger = logging.getLogger("adbackend")
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-app.mount("/images", StaticFiles(directory= working_dir / Path("data/images")), name="images")
-
-ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif"}
-MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB
 
 init_database()
 
@@ -149,14 +144,10 @@ async def get_current_state(db: Session = Depends(get_db)):
     if not current_lot:
         return {"lot": None, "bidders": []}
     
-    lot_image = db.query(LotImage).filter(LotImage.lot_id == current_lot.id).first()
-    image_url = lot_image.url if lot_image else None
-    
     lot_info = {
         "LotNumber": current_lot.lot_number,
         "StudentName": current_lot.student_name,
-        "Department": current_lot.department,
-        "image_url": image_url
+        "Department": current_lot.department
     }
     
     bidders = db.query(BidderLot).filter(BidderLot.lot_id == current_lot.id).all()
@@ -170,29 +161,11 @@ async def get_current_state(db: Session = Depends(get_db)):
 
 @app.post("/api/lot/next")
 async def next_lot(db: Session = Depends(get_db), user: dict = Depends(require_auth)):
-    from datetime import datetime
     session = get_or_create_session(db)
     total_lots = db.query(SaleProgram).count()
     
-    if session.current_lot_index >= 0:
-        current_lot = db.query(SaleProgram).offset(session.current_lot_index).first()
-        if current_lot:
-            pacing_stat = db.query(PacingStats).filter(
-                PacingStats.lot_index == session.current_lot_index,
-                PacingStats.end_time.is_(None)
-            ).first()
-            if pacing_stat:
-                pacing_stat.end_time = datetime.utcnow()
-                pacing_stat.duration_seconds = int((pacing_stat.end_time - pacing_stat.start_time).total_seconds())
-    
     if session.current_lot_index + 1 < total_lots:
         session.current_lot_index += 1
-        
-        new_pacing_stat = PacingStats(
-            lot_index=session.current_lot_index,
-            start_time=datetime.utcnow()
-        )
-        db.add(new_pacing_stat)
         db.commit()
         
         await broadcast_state(db)
@@ -201,25 +174,10 @@ async def next_lot(db: Session = Depends(get_db), user: dict = Depends(require_a
 
 @app.post("/api/lot/prev")
 async def prev_lot(db: Session = Depends(get_db), user: dict = Depends(require_auth)):
-    from datetime import datetime
     session = get_or_create_session(db)
     
     if session.current_lot_index > 0:
-        pacing_stat = db.query(PacingStats).filter(
-            PacingStats.lot_index == session.current_lot_index,
-            PacingStats.end_time.is_(None)
-        ).first()
-        if pacing_stat:
-            pacing_stat.end_time = datetime.utcnow()
-            pacing_stat.duration_seconds = int((pacing_stat.end_time - pacing_stat.start_time).total_seconds())
-        
         session.current_lot_index -= 1
-        
-        new_pacing_stat = PacingStats(
-            lot_index=session.current_lot_index,
-            start_time=datetime.utcnow()
-        )
-        db.add(new_pacing_stat)
         db.commit()
         
         await broadcast_state(db)
@@ -288,48 +246,6 @@ async def export_bidders(db: Session = Depends(get_db), user: dict = Depends(req
     output.seek(0)
     return StreamingResponse(output, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', headers={"Content-Disposition": "attachment; filename=auction_bidders.xlsx"})
 
-@app.post("/api/lot/{lot_number}/image")
-async def upload_lot_image(lot_number: str, file: UploadFile = File(...), db: Session = Depends(get_db), user: dict = Depends(require_auth)):
-    """Upload an image for a specific lot."""
-    file_extension = Path(file.filename).suffix.lower()
-    if file_extension not in ALLOWED_IMAGE_EXTENSIONS:
-        raise HTTPException(status_code=400, detail=f"Invalid file type. Allowed: {', '.join(ALLOWED_IMAGE_EXTENSIONS)}")
-    
-    contents = await file.read()
-    if len(contents) > MAX_IMAGE_SIZE:
-        raise HTTPException(status_code=400, detail=f"File too large. Maximum size: {MAX_IMAGE_SIZE // (1024*1024)}MB")
-    
-    lot = db.query(SaleProgram).filter(SaleProgram.lot_number == lot_number).first()
-    if not lot:
-        raise HTTPException(status_code=404, detail="Lot not found")
-    
-    safe_filename = f"lot_{lot_number}_{int(pd.Timestamp.now().timestamp())}{file_extension}"
-    file_path = Path("data/images") / safe_filename
-    
-    with open(file_path, "wb") as f:
-        f.write(contents)
-    
-    existing_image = db.query(LotImage).filter(LotImage.lot_id == lot.id).first()
-    if existing_image:
-        old_path = Path("data/images") / existing_image.filename
-        if old_path.exists():
-            old_path.unlink()
-        existing_image.filename = safe_filename
-        existing_image.url = f"/images/{safe_filename}"
-    else:
-        lot_image = LotImage(
-            lot_id=lot.id,
-            filename=safe_filename,
-            url=f"/images/{safe_filename}"
-        )
-        db.add(lot_image)
-    
-    db.commit()
-    
-    await broadcast_state(db)
-    await broadcast_message({"type": "log", "message": f"Image uploaded for lot {lot_number}"})
-    
-    return {"message": "Image uploaded successfully", "url": f"/images/{safe_filename}"}
 
 @app.post("/api/bidder/undo")
 async def undo_bidder(db: Session = Depends(get_db), user: dict = Depends(require_auth)):
@@ -408,51 +324,16 @@ async def websocket_endpoint(ws: WebSocket):
         websockets.remove(ws)
 
 async def broadcast_state(db: Session, bid_update=False):
-    from datetime import datetime
     session = get_or_create_session(db)
     
     current_lot = db.query(SaleProgram).offset(session.current_lot_index).first()
     if not current_lot:
         return
     
-    lot_image = db.query(LotImage).filter(LotImage.lot_id == current_lot.id).first()
-    image_url = lot_image.url if lot_image else None
-    
-    current_pacing = db.query(PacingStats).filter(
-        PacingStats.lot_index == session.current_lot_index,
-        PacingStats.end_time.is_(None)
-    ).first()
-    
-    pacing_info = None
-    if current_pacing:
-        current_duration = int((datetime.utcnow() - current_pacing.start_time).total_seconds())
-        
-        completed_stats = db.query(PacingStats).filter(
-            PacingStats.duration_seconds.isnot(None)
-        ).all()
-        
-        if completed_stats:
-            avg_duration = sum(stat.duration_seconds for stat in completed_stats) / len(completed_stats)
-            if current_duration > avg_duration * 1.5:
-                suggestion = "Consider speeding up - lot is taking longer than average"
-            elif current_duration < avg_duration * 0.5:
-                suggestion = "Consider slowing down - lot is moving faster than average"
-            else:
-                suggestion = "Pacing looks good"
-        else:
-            suggestion = "Building pacing baseline"
-        
-        pacing_info = {
-            "current_duration": current_duration,
-            "average_duration": int(avg_duration) if completed_stats else None,
-            "suggestion": suggestion
-        }
-    
     lot_info = {
         "LotNumber": current_lot.lot_number,
         "StudentName": current_lot.student_name,
-        "Department": current_lot.department,
-        "image_url": image_url
+        "Department": current_lot.department
     }
     
     bidders = db.query(BidderLot).filter(BidderLot.lot_id == current_lot.id).all()
@@ -463,7 +344,7 @@ async def broadcast_state(db: Session, bid_update=False):
             bidder_info.append({"Identifier": buyer.identifier, "Name": buyer.name})
     
     message_type = "bid_update" if bid_update else "state"
-    state = {"type": message_type, "lot": lot_info, "bidders": bidder_info, "pacing": pacing_info}
+    state = {"type": message_type, "lot": lot_info, "bidders": bidder_info}
     await broadcast_message(state)
 
 async def broadcast_message(message):

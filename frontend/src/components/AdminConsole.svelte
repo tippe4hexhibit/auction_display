@@ -12,7 +12,6 @@
   let buyerData = [];
   let bidHistory = [];
   let logMessages = [];
-  let pacing = null;
   let currentTab = 'main';
   const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
@@ -59,16 +58,26 @@
   }
 
   onMount(() => {
+    const savedLogs = localStorage.getItem('auction-logs');
+    if (savedLogs) {
+      try {
+        logMessages = JSON.parse(savedLogs);
+      } catch (e) {
+        console.error('Failed to parse saved logs:', e);
+        logMessages = [];
+      }
+    }
+
     ws = new WebSocket(API_BASE.replace('http', 'ws') + '/ws');
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       const timestamp = new Date().toLocaleTimeString();
       if (data.type === 'log' && data.message) {
         logMessages = [...logMessages, `${timestamp}: ${data.message}`];
+        localStorage.setItem('auction-logs', JSON.stringify(logMessages));
       }
 
       if (data.lot) lot = data.lot;
-      if (data.pacing) pacing = data.pacing;
       if (Array.isArray(data.bidders)) {
         bidHistory = [
           ...bidHistory,
@@ -78,7 +87,14 @@
             BuyerNumber: data.bidders.at(-1)?.Identifier,
             BuyerName: data.bidders.at(-1)?.Name
           }
-        ].slice(-15);
+        ].slice(-10);
+        
+        setTimeout(() => {
+          const tableContainer = document.querySelector('.bidder-table-container');
+          if (tableContainer) {
+            tableContainer.scrollTop = tableContainer.scrollHeight;
+          }
+        }, 100);
       }
     };
     
@@ -211,17 +227,15 @@
       bind:bidderNumber 
       {bidHistory} 
       {logMessages}
-      {pacing}
       onAddBidder={addBidder}
       onNextLot={nextLot}
       onPrevLot={prevLot}
-      onFileUpload={handleFileUpload}
       onUndoBidder={handleUndoBidder}
       onMergeBidders={handleMergeBidders}
     />
   {:else if currentTab === 'sale'}
-    <SaleList {saleData} />
+    <SaleList {saleData} onFileUpload={handleFileUpload} />
   {:else if currentTab === 'buyers'}
-    <BuyerList {buyerData} />
+    <BuyerList {buyerData} onFileUpload={handleFileUpload} />
   {/if}
 </div>

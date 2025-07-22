@@ -22,7 +22,6 @@ class SaleProgram(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     bidders = relationship("BidderLot", back_populates="lot")
-    images = relationship("LotImage", back_populates="lot")
 
 class Buyer(Base):
     __tablename__ = "buyers"
@@ -55,26 +54,6 @@ class BidderLot(Base):
     lot = relationship("SaleProgram", back_populates="bidders")
     buyer = relationship("Buyer", back_populates="bids")
 
-class LotImage(Base):
-    __tablename__ = "lot_images"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    lot_id = Column(Integer, ForeignKey("sale_programs.id"))
-    filename = Column(String)
-    original_filename = Column(String)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    
-    lot = relationship("SaleProgram", back_populates="images")
-
-class PacingStats(Base):
-    __tablename__ = "pacing_stats"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    lot_index = Column(Integer)
-    start_time = Column(DateTime)
-    end_time = Column(DateTime)
-    duration_seconds = Column(Integer)
-    created_at = Column(DateTime, default=datetime.utcnow)
 
 def get_db():
     db = SessionLocal()
