@@ -19,11 +19,11 @@ export function getAuthHeaders() {
 }
 
 export async function makeAuthenticatedRequest(url, options = {}) {
-  const headers = {
-    'Content-Type': 'application/json',
-    ...getAuthHeaders(),
-    ...options.headers,
-  };
+  const authHeaders = getAuthHeaders();
+  
+  const headers = options.body instanceof FormData 
+    ? { ...authHeaders, ...options.headers }
+    : { 'Content-Type': 'application/json', ...authHeaders, ...options.headers };
 
   const response = await fetch(url, {
     ...options,
