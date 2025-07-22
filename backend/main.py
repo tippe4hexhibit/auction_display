@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 import logging.config
 import numpy as np
 from fastapi import FastAPI, WebSocket, UploadFile, File, Depends, HTTPException
@@ -40,13 +41,15 @@ LOGGING_CONFIG = {
     }
 }
 
+working_dir = os.path.dirname(__file__)
+
 logging.config.dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger("adbackend")
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-app.mount("/images", StaticFiles(directory="data/images"), name="images")
+app.mount("/images", StaticFiles(directory= working_dir / Path("data/images")), name="images")
 
 ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif"}
 MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB
