@@ -102,7 +102,7 @@
     
     .bidder-item {
         margin-bottom: 8px;
-        font-size: 1.1rem;
+        font-size: 1.265rem;
         line-height: 1.3;
         word-wrap: break-word;
         text-indent: -2em;

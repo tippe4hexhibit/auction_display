@@ -99,8 +99,8 @@
   table { width: 100%; border-collapse: collapse; }
   th, td { padding: 0.5rem; border: 1px solid #aaa; text-align: left; }
   .controls { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
-  .controls input { padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; }
-  .controls button { padding: 0.5rem 1rem; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+  .controls input { padding: 0.6rem; border: 1px solid #ccc; border-radius: 4px; }
+  .controls button { padding: 0.6rem 1.2rem; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
   .controls button:hover { background: #0056b3; }
 </style>
 
