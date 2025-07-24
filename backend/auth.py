@@ -4,6 +4,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from passlib.context import CryptContext
 from jose import JWTError, jwt
+from sqlalchemy.orm import Session
 import os
 
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here-change-in-production")
@@ -53,11 +54,64 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     except JWTError:
         raise credentials_exception
 
-def authenticate_user(username: str, password: str) -> bool:
+def authenticate_user(username: str, password: str, db: Session = None) -> bool:
     """Authenticate user credentials."""
     if username == ADMIN_USERNAME and verify_password(password, ADMIN_PASSWORD_HASH):
         return True
+    
+    if db:
+        from database import User
+        user = db.query(User).filter(User.username == username).first()
+        if user and verify_password(password, user.password_hash):
+            return True
+    
     return False
+
+def create_user(username: str, password: str, db: Session) -> bool:
+    """Create a new admin user."""
+    from database import User
+    
+    existing_user = db.query(User).filter(User.username == username).first()
+    if existing_user:
+        return False
+    
+    password_hash = get_password_hash(password)
+    user = User(username=username, password_hash=password_hash, is_admin=True)
+    db.add(user)
+    db.commit()
+    return True
+
+def change_user_password(username: str, new_password: str, db: Session) -> bool:
+    """Change password for an existing user."""
+    from database import User
+    
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        return False
+    
+    user.password_hash = get_password_hash(new_password)
+    db.commit()
+    return True
+
+def get_all_users(db: Session):
+    """Get all users."""
+    from database import User
+    return db.query(User).all()
+
+def delete_user(username: str, db: Session) -> bool:
+    """Delete a user."""
+    from database import User
+    
+    if username == ADMIN_USERNAME:
+        return False
+    
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        return False
+    
+    db.delete(user)
+    db.commit()
+    return True
 
 def require_auth(user_info: dict = Depends(verify_token)):
     """Dependency to require authentication for protected routes."""

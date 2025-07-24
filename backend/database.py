@@ -42,6 +42,15 @@ class AuctionSession(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     is_active = Column(Boolean, default=True)
 
+class User(Base):
+    __tablename__ = "users"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    password_hash = Column(String)
+    is_admin = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 class BidderLot(Base):
     __tablename__ = "bidders_per_lot"
     
