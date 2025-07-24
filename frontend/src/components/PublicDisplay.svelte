@@ -1,105 +1,178 @@
 <script>
-  import { onMount } from 'svelte';
-  let lot = {};
-  let bidders = [];
-  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+    import { onMount } from 'svelte';
+    let lot = {};
+    let bidders = [];
+    let leftColumnBidders = [];
+    let rightColumnBidders = [];
+    const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+    const MAX_BIDDERS_PER_COLUMN = 10;
 
-  async function fetchInitialState() {
-    try {
-      const stateRes = await fetch(`${API_BASE}/api/state`);
-      const stateData = await stateRes.json();
-      if (stateData.lot) {
-        lot = stateData.lot;
-        bidders = stateData.bidders || [];
-      }
-    } catch (error) {
-      console.error('Failed to fetch initial state:', error);
+    function distributeBidders(bidderList) {
+        if (bidderList.length === 0) {
+            leftColumnBidders = [];
+            rightColumnBidders = [];
+            return;
+        }
+
+        if (bidderList.length > MAX_BIDDERS_PER_COLUMN * 2) {
+            const startIndex = bidderList.length - (MAX_BIDDERS_PER_COLUMN * 2);
+            bidderList = bidderList.slice(startIndex);
+        }
+
+        const midPoint = Math.ceil(bidderList.length / 2);
+        leftColumnBidders = bidderList.slice(0, midPoint);
+        rightColumnBidders = bidderList.slice(midPoint);
     }
-  }
 
-  onMount(() => {
-    const ws = new WebSocket(API_BASE.replace('http', 'ws') + '/ws');
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.lot) lot = data.lot;
-      if (Array.isArray(data.bidders)) bidders = data.bidders;
-    };
-    
-    // Fetch initial data on mount
-    fetchInitialState();
-  });
+    $: distributeBidders(bidders);
+
+    async function fetchInitialState() {
+        try {
+            const stateRes = await fetch(`${API_BASE}/api/state`);
+            const stateData = await stateRes.json();
+            if (stateData.lot) {
+                lot = stateData.lot;
+                bidders = stateData.bidders || [];
+            }
+        } catch (error) {
+            console.error('Failed to fetch initial state:', error);
+        }
+    }
+
+    onMount(() => {
+        const ws = new WebSocket(API_BASE.replace('http', 'ws') + '/ws');
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.lot) lot = data.lot;
+            if (Array.isArray(data.bidders)) bidders = data.bidders;
+        };
+        
+        fetchInitialState();
+    });
 </script>
 
 <style>
-  .public-display {
-    position: relative;
-    width: 100vw;
-    height: 100vh;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    overflow: hidden;
-  }
-  
-  
-  .lot-info {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: rgba(0, 0, 0, 0.8);
-    color: white;
-    padding: 40px;
-    border-radius: 12px;
-    text-align: center;
-    backdrop-filter: blur(10px);
-    min-width: 600px;
-  }
-  
-  .lot-info h2 {
-    margin: 0 0 15px 0;
-    font-size: 2rem;
-    font-weight: bold;
-  }
-  
-  .bidders-section {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 15px;
-  }
-  
-  .bidder-item {
-    background: rgba(255, 255, 255, 0.2);
-    padding: 8px 16px;
-    border-radius: 20px;
-    font-size: 1.1rem;
-    font-weight: 500;
-  }
-  
-  .clock {
-    position: absolute;
-    top: 30px;
-    right: 30px;
-    background: rgba(0, 0, 0, 0.6);
-    color: white;
-    padding: 15px 20px;
-    border-radius: 8px;
-    font-size: 1.2rem;
-    font-weight: bold;
-    backdrop-filter: blur(10px);
-  }
+    .container {
+        padding: 20px;
+        font-family: Arial, sans-serif;
+    }
+    
+    .header {
+        text-align: center;
+        border: 2px solid black;
+        padding: 10px;
+        margin-bottom: 20px;
+        font-size: 1.5rem;
+        font-weight: bold;
+    }
+    
+    .content {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+    
+    .bidders-section {
+        flex: 1;
+    }
+    
+    .bidders-container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0 40px;
+        margin-bottom: 20px;
+        height: 400px;
+        overflow: hidden;
+    }
+    
+    .bidders-column {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .bidder-item {
+        margin-bottom: 8px;
+        font-size: 1.1rem;
+        line-height: 1.3;
+        word-wrap: break-word;
+        text-indent: -2em;
+        padding-left: 2em;
+    }
+    
+    .bidder-number {
+        display: inline-block;
+        min-width: 2em;
+        text-indent: 0;
+    }
+    
+    .lot-info {
+        border: 2px solid black;
+        padding: 10px;
+        margin-top: 20px;
+    }
+    
+    .lot-info table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .lot-info th, .lot-info td {
+        border: 1px solid black;
+        padding: 8px;
+        text-align: center;
+        font-size: 1.2rem;
+    }
+    
+    .lot-info th {
+        background-color: #f0f0f0;
+        font-weight: bold;
+    }
 </style>
 
-<div class="public-display">
-  <div class="lot-info">
-    <h2>Lot {lot?.LotNumber}: {lot?.StudentName} ({lot?.Department})</h2>
-    <div class="bidders-section">
-      {#each bidders as bidder}
-        <div class="bidder-item">
-          {bidder.Identifier}: {bidder.Name}
-        </div>
-      {/each}
+<div class="container">
+    <div class="header">
+        Tippecanoe County 4-H Livestock Auction
     </div>
-  </div>
-  
-  <div class="clock">{new Date().toLocaleTimeString()}</div>
+    
+    <div class="content">
+        <div class="bidders-section">
+            {#if bidders.length > 0}
+                <div class="bidders-container">
+                    <div class="bidders-column">
+                        {#each leftColumnBidders as bidder}
+                            <div class="bidder-item">
+                                <span class="bidder-number">{bidder.Identifier}</span>	{bidder.Name}
+                            </div>
+                        {/each}
+                    </div>
+                    <div class="bidders-column">
+                        {#each rightColumnBidders as bidder}
+                            <div class="bidder-item">
+                                <span class="bidder-number">{bidder.Identifier}</span>	{bidder.Name}
+                            </div>
+                        {/each}
+                    </div>
+                </div>
+            {/if}
+        </div>
+        
+        <div class="lot-info">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Lot #</th>
+                        <th>Exhibitor</th>
+                        <th>Species</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>{lot?.LotNumber || ''}</td>
+                        <td>{lot?.StudentName || ''}</td>
+                        <td>{lot?.Species || ''}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
