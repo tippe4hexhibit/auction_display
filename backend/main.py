@@ -67,26 +67,42 @@ async def login(login_request: LoginRequest):
 
 @app.post("/api/upload/sale_program")
 async def upload_sale_program(file: UploadFile = File(...), db: Session = Depends(get_db), user: dict = Depends(require_auth)):
-    db.query(SaleProgram).delete()
-    db.commit()
-    
     df = pd.read_excel(file.file)
     df.rename(columns={"Sale #": "LotNumber", "Exhibitor": "StudentName", "Department": "Department"}, inplace=True)
     df.replace({np.nan: None}, inplace=True)
     
+    existing_lots = {lot.lot_number: lot for lot in db.query(SaleProgram).all()}
+    
+    updated_count = 0
+    added_count = 0
+    
     for _, row in df.iterrows():
-        lot = SaleProgram(
-            lot_number=str(row.get("LotNumber", "")),
-            student_name=str(row.get("StudentName", "")),
-            department=str(row.get("Department", ""))
-        )
-        db.add(lot)
+        lot_number_str = str(row.get("LotNumber", ""))
+        student_name_str = str(row.get("StudentName", ""))
+        department_str = str(row.get("Department", ""))
+        
+        if lot_number_str in existing_lots:
+            existing_lot = existing_lots[lot_number_str]
+            if (existing_lot.student_name != student_name_str or 
+                existing_lot.department != department_str):
+                existing_lot.student_name = student_name_str
+                existing_lot.department = department_str
+                updated_count += 1
+        else:
+            lot = SaleProgram(
+                lot_number=lot_number_str,
+                student_name=student_name_str,
+                department=department_str
+            )
+            db.add(lot)
+            added_count += 1
     
     db.commit()
-    logger.info(f"Sale program uploaded with {len(df)} rows.")
+    message = f"Sale program processed: {added_count} added, {updated_count} updated"
+    logger.info(message)
     await broadcast_state(db)
-    await broadcast_message({"type": "log", "message": f"Sale program uploaded with {len(df)} rows."})
-    return {"message": "Sale program uploaded", "rows": len(df)}
+    await broadcast_message({"type": "log", "message": message})
+    return {"message": message, "added": added_count, "updated": updated_count}
 
 @app.post("/api/upload/buyer_list")
 async def upload_buyer_list(file: UploadFile = File(...), db: Session = Depends(get_db), user: dict = Depends(require_auth)):
