@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, afterUpdate } from 'svelte';
   import { getAuthHeaders } from '../utils/auth.js';
   
   export let lot = {};
@@ -15,11 +15,19 @@
   let showMerge = false;
   let sourceBidder = '';
   let targetBidder = '';
+  let bidderTableContainer;
 
   function handleKeyPress(e) {
     if (e.key === 'Enter') {
       onAddBidder();
     }
+  }
+
+  // Auto-scroll to bottom when bidHistory changes
+  $: if (bidHistory && bidHistory.length > 0 && bidderTableContainer) {
+    setTimeout(() => {
+      bidderTableContainer.scrollTop = bidderTableContainer.scrollHeight;
+    }, 100);
   }
 
   
@@ -114,7 +122,7 @@
   {#if (bidHistory || []).length === 0}
     <p style="text-align:center; font-style:italic;">No bids recorded yet.</p>
   {:else}
-    <div class="bidder-table-container">
+    <div class="bidder-table-container" bind:this={bidderTableContainer}>
       <table>
         <tr><th>Lot</th><th>Student</th><th>Buyer #</th><th>Buyer Name</th></tr>
         {#each bidHistory || [] as entry}
