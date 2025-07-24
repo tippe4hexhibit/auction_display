@@ -90,28 +90,41 @@ async def upload_sale_program(file: UploadFile = File(...), db: Session = Depend
 
 @app.post("/api/upload/buyer_list")
 async def upload_buyer_list(file: UploadFile = File(...), db: Session = Depends(get_db), user: dict = Depends(require_auth)):
-    db.query(Buyer).delete()
-    db.commit()
-    
     df = pd.read_excel(file.file)
     df.replace({np.nan: None}, inplace=True)
+    
+    existing_buyers = {buyer.identifier: buyer for buyer in db.query(Buyer).all()}
+    
+    updated_count = 0
+    added_count = 0
     
     for _, row in df.iterrows():
         identifier_value = row.get("Identifier")
         if identifier_value is None or pd.isna(identifier_value):
             identifier_value = 0
         
-        buyer = Buyer(
-            identifier=int(identifier_value),
-            name=str(row.get("Name", ""))
-        )
-        db.add(buyer)
+        identifier_int = int(identifier_value)
+        name_str = str(row.get("Name", ""))
+        
+        if identifier_int in existing_buyers:
+            existing_buyer = existing_buyers[identifier_int]
+            if existing_buyer.name != name_str:
+                existing_buyer.name = name_str
+                updated_count += 1
+        else:
+            buyer = Buyer(
+                identifier=identifier_int,
+                name=name_str
+            )
+            db.add(buyer)
+            added_count += 1
     
     db.commit()
-    logger.info(f"Buyer list uploaded with {len(df)} rows.")
+    message = f"Buyer list processed: {added_count} added, {updated_count} updated"
+    logger.info(message)
     await broadcast_state(db)
-    await broadcast_message({"type": "log", "message": f"Buyer list uploaded with {len(df)} rows."})
-    return {"message": "Buyer list uploaded", "rows": len(df)}
+    await broadcast_message({"type": "log", "message": message})
+    return {"message": message, "added": added_count, "updated": updated_count}
 
 @app.get("/api/sale")
 async def get_sale(db: Session = Depends(get_db)):
