@@ -23,8 +23,11 @@
   <h3>Buyer List ({(buyerData || []).length} buyers)</h3>
   <div class="drop-zone"
        on:drop={(e) => { e.preventDefault(); onFileUpload(e.dataTransfer.files, '/api/upload/buyer_list'); }}
-       on:dragover={(e) => e.preventDefault()}>
-    Drag & drop Buyer List Excel file here
+       on:dragover={(e) => e.preventDefault()}
+       on:click={() => document.getElementById('buyer-file-input').click()}>
+    Drag & drop Buyer List Excel file here or click to browse
+    <input id="buyer-file-input" type="file" accept=".xlsx,.xls" style="display: none;" 
+           on:change={(e) => onFileUpload(e.target.files, '/api/upload/buyer_list')} />
   </div>
   {#if (buyerData || []).length === 0}
     <p style="text-align:center; font-style:italic;">No buyer data loaded.</p>

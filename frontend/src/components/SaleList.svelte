@@ -17,8 +17,11 @@
   <h3>Sale List ({(saleData || []).length} lots)</h3>
   <div class="drop-zone"
        on:drop={(e) => { e.preventDefault(); onFileUpload(e.dataTransfer.files, '/api/upload/sale_program'); }}
-       on:dragover={(e) => e.preventDefault()}>
-    Drag & drop Sale Program Excel file here
+       on:dragover={(e) => e.preventDefault()}
+       on:click={() => document.getElementById('sale-file-input').click()}>
+    Drag & drop Sale Program Excel file here or click to browse
+    <input id="sale-file-input" type="file" accept=".xlsx,.xls" style="display: none;" 
+           on:change={(e) => onFileUpload(e.target.files, '/api/upload/sale_program')} />
   </div>
   {#if (saleData || []).length === 0}
     <p style="text-align:center; font-style:italic;">No sale data loaded.</p>
