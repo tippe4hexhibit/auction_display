@@ -53,8 +53,12 @@
 
 <style>
     .container {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
         padding: 20px;
         font-family: Arial, sans-serif;
+        box-sizing: border-box;
     }
     
     .header {
@@ -64,30 +68,36 @@
         margin-bottom: 20px;
         font-size: 1.5rem;
         font-weight: bold;
+        flex-shrink: 0;
     }
     
     .content {
         display: flex;
         flex-direction: column;
-        gap: 20px;
+        flex: 1;
+        min-height: 0;
     }
     
     .bidders-section {
         flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
     }
     
     .bidders-container {
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 0 40px;
-        margin-bottom: 20px;
-        height: 400px;
+        flex: 1;
         overflow: hidden;
+        min-height: 0;
     }
     
     .bidders-column {
         display: flex;
         flex-direction: column;
+        overflow: hidden;
     }
     
     .bidder-item {
@@ -97,6 +107,7 @@
         word-wrap: break-word;
         text-indent: -2em;
         padding-left: 2em;
+        flex-shrink: 0;
     }
     
     .bidder-number {
@@ -109,6 +120,7 @@
         border: 2px solid black;
         padding: 10px;
         margin-top: 20px;
+        flex-shrink: 0;
     }
     
     .lot-info table {
