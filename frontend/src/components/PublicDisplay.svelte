@@ -181,7 +181,7 @@
                     <tr>
                         <td>{lot?.LotNumber || ''}</td>
                         <td>{lot?.StudentName || ''}</td>
-                        <td>{lot?.Species || ''}</td>
+                        <td>{lot?.Department || ''}</td>
                     </tr>
                 </tbody>
             </table>
