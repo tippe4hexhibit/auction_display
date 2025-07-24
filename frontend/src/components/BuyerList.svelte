@@ -1,6 +1,12 @@
 <script>
   export let buyerData = [];
   export let onFileUpload;
+  
+  $: sortedBuyerData = (buyerData || []).sort((a, b) => {
+    const aId = parseInt(a.Identifier) || 0;
+    const bId = parseInt(b.Identifier) || 0;
+    return aId - bId;
+  });
 </script>
 
 <style>
@@ -24,7 +30,7 @@
     <p style="text-align:center; font-style:italic;">No buyer data loaded.</p>
   {:else}
     <div class="buyer-list">
-      {#each buyerData || [] as buyer}
+      {#each sortedBuyerData as buyer}
         <div class="buyer-item">
           <strong>#{buyer.Identifier}</strong> - {buyer.Name}
         </div>
