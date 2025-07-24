@@ -3,6 +3,8 @@
   import MainControl from './MainControl.svelte';
   import SaleList from './SaleList.svelte';
   import BuyerList from './BuyerList.svelte';
+  import UserManagement from './UserManagement.svelte';
+  import Logging from './Logging.svelte';
   import { makeAuthenticatedRequest } from '../utils/auth.js';
   
   let lot = {};
@@ -50,6 +52,8 @@
             BuyerNumber: bidder.Identifier,
             BuyerName: bidder.Name
           }));
+        } else {
+          bidHistory = [];
         }
       }
     } catch (error) {
@@ -77,24 +81,20 @@
         localStorage.setItem('auction-logs', JSON.stringify(logMessages));
       }
 
-      if (data.lot) lot = data.lot;
-      if (Array.isArray(data.bidders) && data.bidders.length > 0) {
-        bidHistory = [
-          ...bidHistory,
-          {
-            LotNumber: lot.LotNumber,
-            StudentName: lot.StudentName,
-            BuyerNumber: data.bidders.at(-1)?.Identifier,
-            BuyerName: data.bidders.at(-1)?.Name
+      if (data.lot) {
+        lot = data.lot;
+        if (data.type === 'state' || data.type === 'bid_update') {
+          if (Array.isArray(data.bidders)) {
+            bidHistory = data.bidders.map(bidder => ({
+              LotNumber: lot.LotNumber,
+              StudentName: lot.StudentName,
+              BuyerNumber: bidder.Identifier,
+              BuyerName: bidder.Name
+            }));
+          } else {
+            bidHistory = [];
           }
-        ].slice(-10);
-        
-        setTimeout(() => {
-          const tableContainer = document.querySelector('.bidder-table-container');
-          if (tableContainer) {
-            tableContainer.scrollTop = tableContainer.scrollHeight;
-          }
-        }, 100);
+        }
       }
     };
     
@@ -219,14 +219,15 @@
     <button class:active={currentTab === 'main'} on:click={() => currentTab = 'main'}>Main Control</button>
     <button class:active={currentTab === 'sale'} on:click={() => currentTab = 'sale'}>Sale List</button>
     <button class:active={currentTab === 'buyers'} on:click={() => currentTab = 'buyers'}>Buyer List</button>
+    <button class:active={currentTab === 'users'} on:click={() => currentTab = 'users'}>User Management</button>
+    <button class:active={currentTab === 'logging'} on:click={() => currentTab = 'logging'}>Logging</button>
   </div>
 
   {#if currentTab === 'main'}
     <MainControl 
       {lot} 
       bind:bidderNumber 
-      {bidHistory} 
-      {logMessages}
+      {bidHistory}
       onAddBidder={addBidder}
       onNextLot={nextLot}
       onPrevLot={prevLot}
@@ -237,5 +238,9 @@
     <SaleList {saleData} onFileUpload={handleFileUpload} />
   {:else if currentTab === 'buyers'}
     <BuyerList {buyerData} onFileUpload={handleFileUpload} />
+  {:else if currentTab === 'users'}
+    <UserManagement />
+  {:else if currentTab === 'logging'}
+    <Logging {logMessages} />
   {/if}
 </div>

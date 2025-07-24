@@ -1,11 +1,10 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, afterUpdate } from 'svelte';
   import { getAuthHeaders } from '../utils/auth.js';
   
   export let lot = {};
   export let bidderNumber = '';
   export let bidHistory = [];
-  export let logMessages = [];
   export let onAddBidder;
   export let onNextLot;
   export let onPrevLot;
@@ -16,11 +15,19 @@
   let showMerge = false;
   let sourceBidder = '';
   let targetBidder = '';
+  let bidderTableContainer;
 
   function handleKeyPress(e) {
     if (e.key === 'Enter') {
       onAddBidder();
     }
+  }
+
+  // Auto-scroll to bottom when bidHistory changes
+  $: if (bidHistory && bidHistory.length > 0 && bidderTableContainer) {
+    setTimeout(() => {
+      bidderTableContainer.scrollTop = bidderTableContainer.scrollHeight;
+    }, 100);
   }
 
   
@@ -88,7 +95,6 @@
     color: #856404; 
     margin: 0.5rem 0 0 0; 
   }
-  .log-box { border:1px solid #ccc; height:150px; overflow-y:scroll; background: #000; color: #0f0; font-family: monospace; padding: 0.5rem; }
   .bidder-table-container { max-height: 300px; overflow-y: auto; }
   table { width: 100%; border-collapse: collapse; }
   th, td { padding: 0.5rem; border: 1px solid #aaa; text-align: left; }
@@ -112,11 +118,11 @@
 
 
 <div class="section">
-  <h3>Recent Entries</h3>
+  <h3>Buyers for Lot {lot?.LotNumber || 'N/A'}</h3>
   {#if (bidHistory || []).length === 0}
     <p style="text-align:center; font-style:italic;">No bids recorded yet.</p>
   {:else}
-    <div class="bidder-table-container">
+    <div class="bidder-table-container" bind:this={bidderTableContainer}>
       <table>
         <tr><th>Lot</th><th>Student</th><th>Buyer #</th><th>Buyer Name</th></tr>
         {#each bidHistory || [] as entry}
@@ -143,13 +149,4 @@
       <p class="merge-warning">⚠️ This will merge all bids from source bidder into target bidder. This cannot be undone.</p>
     </div>
   {/if}
-</div>
-
-<div class="section">
-  <h3>Log</h3>
-  <div class="log-box">
-    {#each logMessages || [] as msg}
-      <div>{msg}</div>
-    {/each}
-  </div>
 </div>

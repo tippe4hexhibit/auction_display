@@ -15,9 +15,9 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 from database import (
     init_database, get_db, get_or_create_session,
-    SaleProgram, Buyer, BidderLot, AuctionSession
+    SaleProgram, Buyer, BidderLot, AuctionSession, User
 )
-from auth import authenticate_user, create_access_token, require_auth
+from auth import authenticate_user, create_access_token, require_auth, create_user, change_user_password, get_all_users, delete_user
 
 class LoginRequest(BaseModel):
     username: str
@@ -54,9 +54,9 @@ init_database()
 websockets = []
 
 @app.post("/api/auth/login")
-async def login(login_request: LoginRequest):
+async def login(login_request: LoginRequest, db: Session = Depends(get_db)):
     """Authenticate user and return access token."""
-    if not authenticate_user(login_request.username, login_request.password):
+    if not authenticate_user(login_request.username, login_request.password, db):
         raise HTTPException(
             status_code=401,
             detail="Incorrect username or password"
@@ -307,6 +307,14 @@ class MergeRequest(BaseModel):
     source_identifier: int
     target_identifier: int
 
+class CreateUserRequest(BaseModel):
+    username: str
+    password: str
+
+class ChangePasswordRequest(BaseModel):
+    username: str
+    new_password: str
+
 @app.post("/api/bidder/merge")
 async def merge_bidders(merge_request: MergeRequest, db: Session = Depends(get_db), user: dict = Depends(require_auth)):
     """Merge two bidder records."""
@@ -341,6 +349,39 @@ async def merge_bidders(merge_request: MergeRequest, db: Session = Depends(get_d
     await broadcast_message({"type": "log", "message": f"Merged bidder {merge_request.source_identifier} into {merge_request.target_identifier}"})
     
     return {"message": f"Merged bidder {merge_request.source_identifier} into {merge_request.target_identifier}"}
+
+@app.get("/api/users")
+async def get_users(db: Session = Depends(get_db), user: dict = Depends(require_auth)):
+    """Get all users."""
+    users = get_all_users(db)
+    return [{"username": u.username, "created_at": u.created_at} for u in users]
+
+@app.post("/api/users")
+async def create_new_user(request: CreateUserRequest, db: Session = Depends(get_db), user: dict = Depends(require_auth)):
+    """Create a new admin user."""
+    if create_user(request.username, request.password, db):
+        await broadcast_message({"type": "log", "message": f"Created new admin user: {request.username}"})
+        return {"message": f"User {request.username} created successfully"}
+    else:
+        raise HTTPException(status_code=400, detail="Username already exists")
+
+@app.post("/api/users/change-password")
+async def change_password(request: ChangePasswordRequest, db: Session = Depends(get_db), user: dict = Depends(require_auth)):
+    """Change password for a user."""
+    if change_user_password(request.username, request.new_password, db):
+        await broadcast_message({"type": "log", "message": f"Password changed for user: {request.username}"})
+        return {"message": f"Password changed for {request.username}"}
+    else:
+        raise HTTPException(status_code=404, detail="User not found")
+
+@app.delete("/api/users/{username}")
+async def delete_user_endpoint(username: str, db: Session = Depends(get_db), user: dict = Depends(require_auth)):
+    """Delete a user."""
+    if delete_user(username, db):
+        await broadcast_message({"type": "log", "message": f"Deleted user: {username}"})
+        return {"message": f"User {username} deleted successfully"}
+    else:
+        raise HTTPException(status_code=400, detail="Cannot delete user (user not found or is default admin)")
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
