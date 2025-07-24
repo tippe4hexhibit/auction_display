@@ -78,7 +78,7 @@
       }
 
       if (data.lot) lot = data.lot;
-      if (Array.isArray(data.bidders)) {
+      if (Array.isArray(data.bidders) && data.bidders.length > 0) {
         bidHistory = [
           ...bidHistory,
           {
