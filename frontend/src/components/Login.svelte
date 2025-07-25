@@ -126,14 +126,6 @@
     color: #333;
   }
   
-  .default-creds {
-    margin-top: 1rem;
-    padding: 0.75rem;
-    background-color: #f8f9fa;
-    border-radius: 4px;
-    font-size: 0.875rem;
-    color: #6c757d;
-  }
 </style>
 
 <div class="login-container">
@@ -175,11 +167,5 @@
     {#if error}
       <div class="error">{error}</div>
     {/if}
-    
-    <div class="default-creds">
-      <strong>Default credentials:</strong><br>
-      Username: admin<br>
-      Password: admin123
-    </div>
   </div>
 </div>

@@ -3,6 +3,9 @@ FROM node:18-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
+# Accept build argument for API base URL
+ARG VITE_API_BASE=http://localhost:8000
+
 # Copy frontend package files
 COPY frontend/package*.json ./
 
@@ -11,6 +14,9 @@ RUN npm ci
 
 # Copy frontend source code
 COPY frontend/ ./
+
+# Set environment variable for Vite build
+ENV VITE_API_BASE=${VITE_API_BASE}
 
 # Build frontend static files
 RUN npm run build
