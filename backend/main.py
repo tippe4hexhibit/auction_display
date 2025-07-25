@@ -4,7 +4,8 @@ import logging.config
 import numpy as np
 from fastapi import FastAPI, WebSocket, UploadFile, File, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 import pandas as pd
 import uvicorn
@@ -52,7 +53,6 @@ from fastapi.staticfiles import StaticFiles
 import os
 if os.path.exists("frontend/dist"):
     app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="static")
-
 
 init_database()
 
@@ -428,6 +428,7 @@ async def broadcast_message(message):
             await ws.send_json(message)
         except:
             websockets.remove(ws)
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
