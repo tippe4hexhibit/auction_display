@@ -51,8 +51,9 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 
 from fastapi.staticfiles import StaticFiles
 import os
-if os.path.exists("frontend/dist"):
-    app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="static")
+frontend_dist_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+if os.path.exists(frontend_dist_path):
+    app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist_path, "assets")), name="assets")
 
 init_database()
 
@@ -429,6 +430,14 @@ async def broadcast_message(message):
         except:
             websockets.remove(ws)
 
+@app.get("/{full_path:path}")
+async def serve_spa(full_path: str):
+    """Serve the SPA for all non-API routes"""
+    if full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="Not Found")
+    
+    frontend_dist_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+    return FileResponse(os.path.join(frontend_dist_path, "index.html"))
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
