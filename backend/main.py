@@ -48,6 +48,11 @@ logger = logging.getLogger("adbackend")
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
+from fastapi.staticfiles import StaticFiles
+import os
+if os.path.exists("frontend/dist"):
+    app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="static")
+
 
 init_database()
 
