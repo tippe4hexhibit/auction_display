@@ -4,7 +4,8 @@ import logging.config
 import numpy as np
 from fastapi import FastAPI, WebSocket, UploadFile, File, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 import pandas as pd
 import uvicorn
@@ -50,9 +51,9 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 
 from fastapi.staticfiles import StaticFiles
 import os
-if os.path.exists("frontend/dist"):
-    app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="static")
-
+frontend_dist_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+if os.path.exists(frontend_dist_path):
+    app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist_path, "assets")), name="assets")
 
 init_database()
 
@@ -428,6 +429,15 @@ async def broadcast_message(message):
             await ws.send_json(message)
         except:
             websockets.remove(ws)
+
+@app.get("/{full_path:path}")
+async def serve_spa(full_path: str):
+    """Serve the SPA for all non-API routes"""
+    if full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="Not Found")
+    
+    frontend_dist_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+    return FileResponse(os.path.join(frontend_dist_path, "index.html"))
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
