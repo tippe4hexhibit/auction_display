@@ -49,9 +49,13 @@ logger = logging.getLogger("adbackend")
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-from fastapi.staticfiles import StaticFiles
 import os
-frontend_dist_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+
+if os.path.exists("/app/frontend/dist"):
+    frontend_dist_path = "/app/frontend/dist"
+else:
+    frontend_dist_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+
 if os.path.exists(frontend_dist_path):
     app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist_path, "assets")), name="assets")
 
@@ -436,7 +440,11 @@ async def serve_spa(full_path: str):
     if full_path.startswith("api/"):
         raise HTTPException(status_code=404, detail="Not Found")
     
-    frontend_dist_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+    if os.path.exists("/app/frontend/dist"):
+        frontend_dist_path = "/app/frontend/dist"
+    else:
+        frontend_dist_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+    
     return FileResponse(os.path.join(frontend_dist_path, "index.html"))
 
 if __name__ == "__main__":
