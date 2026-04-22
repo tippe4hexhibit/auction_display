@@ -124,10 +124,14 @@
   {:else}
     <div class="bidder-table-container" bind:this={bidderTableContainer}>
       <table>
-        <tr><th>Lot</th><th>Student</th><th>Buyer #</th><th>Buyer Name</th></tr>
-        {#each bidHistory || [] as entry}
-          <tr><td>{entry.LotNumber}</td><td>{entry.StudentName}</td><td>{entry.BuyerNumber}</td><td>{entry.BuyerName}</td></tr>
-        {/each}
+        <thead>
+          <tr><th>Lot</th><th>Student</th><th>Buyer #</th><th>Buyer Name</th></tr>
+        </thead>
+        <tbody>
+          {#each bidHistory || [] as entry}
+            <tr><td>{entry.LotNumber}</td><td>{entry.StudentName}</td><td>{entry.BuyerNumber}</td><td>{entry.BuyerName}</td></tr>
+          {/each}
+        </tbody>
       </table>
     </div>
     <div class="admin-tools">
