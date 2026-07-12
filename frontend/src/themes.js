@@ -1,6 +1,9 @@
 // Keep these keys in sync with ALLOWED_THEMES in backend/database.py.
-// Body text stays black-on-white in every preset so the bidder list is
-// always readable at a distance; color is limited to borders/headers.
+// Most presets keep body text black-on-white so the bidder list is always
+// readable at a distance, with color limited to borders/headers. Solid
+// presets (like fourh_green_solid) are the deliberate exception; verify
+// their background/text contrast ratio meets WCAG AA (>= 3:1 for this
+// display's large text) before adding another one.
 export const THEMES = {
     classic: {
         label: 'Classic (Black & White)',
@@ -21,6 +24,18 @@ export const THEMES = {
         headerText: '#ffffff',
         tableHeaderBg: '#e6f4ec',
         separatorColor: '#00843D'
+    },
+    fourh_green_solid: {
+        // #00843D vs white text ≈ 4.8:1 contrast — clears WCAG AA for
+        // normal text, not just the 3:1 large-text minimum.
+        label: '4-H Green (Solid)',
+        background: '#00843D',
+        text: '#ffffff',
+        borderColor: '#ffffff',
+        headerBg: '#ffffff',
+        headerText: '#00843D',
+        tableHeaderBg: '#00612E',
+        separatorColor: '#ffffff'
     },
     high_contrast: {
         label: 'High Contrast (Black & Yellow)',

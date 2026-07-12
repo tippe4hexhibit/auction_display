@@ -8,7 +8,7 @@ import os
 logger = logging.getLogger("adbackend")
 
 # Keep in sync with the THEMES keys in frontend/src/themes.js
-ALLOWED_THEMES = {"classic", "fourh_green", "high_contrast"}
+ALLOWED_THEMES = {"classic", "fourh_green", "fourh_green_solid", "high_contrast"}
 DEFAULT_THEME = "classic"
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/auction.db")
