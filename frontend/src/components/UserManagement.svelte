@@ -202,12 +202,12 @@
               <td>{user.username}</td>
               <td>{new Date(user.created_at).toLocaleString()}</td>
               <td>
-                {#if user.username !== 'admin'}
+                {#if users.length > 1}
                   <button class="btn btn-danger" on:click={() => deleteUser(user.username)} disabled={loading}>
                     Delete
                   </button>
                 {:else}
-                  <span style="color: #6c757d;">Default Admin</span>
+                  <span style="color: #6c757d;">Only user — cannot delete</span>
                 {/if}
               </td>
             </tr>
