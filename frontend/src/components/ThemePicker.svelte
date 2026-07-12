@@ -88,7 +88,7 @@
                 on:click={() => applyTheme(name)}
                 disabled={saving}
             >
-                <span class="swatch-preview" style="background: {theme.background};"></span>
+                <span class="swatch-preview" style="background: {theme.swatchColor};"></span>
                 {theme.label}
             </button>
         {/each}
