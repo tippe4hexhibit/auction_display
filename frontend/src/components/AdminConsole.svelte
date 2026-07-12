@@ -5,8 +5,10 @@
   import BuyerList from './BuyerList.svelte';
   import UserManagement from './UserManagement.svelte';
   import Logging from './Logging.svelte';
+  import ThemePicker from './ThemePicker.svelte';
   import { makeAuthenticatedRequest } from '../utils/auth.js';
-  
+  import { DEFAULT_THEME } from '../themes.js';
+
   let lot = {};
   let bidderNumber = '';
   let ws;
@@ -15,6 +17,7 @@
   let bidHistory = [];
   let logMessages = [];
   let currentTab = 'main';
+  let theme = DEFAULT_THEME;
   const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
   async function fetchSaleData() {
@@ -56,6 +59,7 @@
           bidHistory = [];
         }
       }
+      if (stateData.theme) theme = stateData.theme;
     } catch (error) {
       console.error('Failed to fetch current state:', error);
     }
@@ -96,6 +100,7 @@
           }
         }
       }
+      if (data.theme) theme = data.theme;
     };
     
     // Fetch initial data on mount
@@ -214,6 +219,8 @@
 
 <div>
   <h2>Admin Console</h2>
+
+  <ThemePicker currentTheme={theme} />
 
   <div class="tab-buttons">
     <button class:active={currentTab === 'main'} on:click={() => currentTab = 'main'}>Main Control</button>
