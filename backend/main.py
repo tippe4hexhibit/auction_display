@@ -16,7 +16,8 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 from database import (
     init_database, get_db, get_or_create_session,
-    SaleProgram, Buyer, BidderLot, AuctionSession, User
+    SaleProgram, Buyer, BidderLot, AuctionSession, User,
+    ALLOWED_THEMES
 )
 from auth import authenticate_user, create_access_token, require_auth, create_user, change_user_password, get_all_users, delete_user
 
@@ -27,6 +28,9 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     access_token: str
     token_type: str
+
+class ThemeRequest(BaseModel):
+    theme: str
 
 LOGGING_CONFIG = {
     "version": 1,
@@ -178,25 +182,37 @@ async def get_buyers(db: Session = Depends(get_db)):
 @app.get("/api/state")
 async def get_current_state(db: Session = Depends(get_db)):
     session = get_or_create_session(db)
-    
+
     current_lot = db.query(SaleProgram).offset(session.current_lot_index).first()
     if not current_lot:
-        return {"lot": None, "bidders": []}
-    
+        return {"lot": None, "bidders": [], "theme": session.theme}
+
     lot_info = {
         "LotNumber": current_lot.lot_number,
         "StudentName": current_lot.student_name,
         "Department": current_lot.department
     }
-    
+
     bidders = db.query(BidderLot).filter(BidderLot.lot_id == current_lot.id).all()
     bidder_info = []
     for bidder in bidders:
         buyer = db.query(Buyer).filter(Buyer.id == bidder.buyer_id).first()
         if buyer:
             bidder_info.append({"Identifier": buyer.identifier, "Name": buyer.name})
-    
-    return {"lot": lot_info, "bidders": bidder_info}
+
+    return {"lot": lot_info, "bidders": bidder_info, "theme": session.theme}
+
+@app.post("/api/theme")
+async def set_theme(request: ThemeRequest, db: Session = Depends(get_db), user: dict = Depends(require_auth)):
+    if request.theme not in ALLOWED_THEMES:
+        raise HTTPException(status_code=400, detail=f"Unknown theme '{request.theme}'")
+
+    session = get_or_create_session(db)
+    session.theme = request.theme
+    db.commit()
+
+    await broadcast_state(db)
+    return {"message": "Theme updated", "theme": request.theme}
 
 @app.post("/api/lot/next")
 async def next_lot(db: Session = Depends(get_db), user: dict = Depends(require_auth)):
@@ -405,26 +421,26 @@ async def websocket_endpoint(ws: WebSocket):
 
 async def broadcast_state(db: Session, bid_update=False):
     session = get_or_create_session(db)
-    
+
     current_lot = db.query(SaleProgram).offset(session.current_lot_index).first()
-    if not current_lot:
-        return
-    
-    lot_info = {
-        "LotNumber": current_lot.lot_number,
-        "StudentName": current_lot.student_name,
-        "Department": current_lot.department
-    }
-    
-    bidders = db.query(BidderLot).filter(BidderLot.lot_id == current_lot.id).all()
+
+    lot_info = None
     bidder_info = []
-    for bidder in bidders:
-        buyer = db.query(Buyer).filter(Buyer.id == bidder.buyer_id).first()
-        if buyer:
-            bidder_info.append({"Identifier": buyer.identifier, "Name": buyer.name})
-    
+    if current_lot:
+        lot_info = {
+            "LotNumber": current_lot.lot_number,
+            "StudentName": current_lot.student_name,
+            "Department": current_lot.department
+        }
+
+        bidders = db.query(BidderLot).filter(BidderLot.lot_id == current_lot.id).all()
+        for bidder in bidders:
+            buyer = db.query(Buyer).filter(Buyer.id == bidder.buyer_id).first()
+            if buyer:
+                bidder_info.append({"Identifier": buyer.identifier, "Name": buyer.name})
+
     message_type = "bid_update" if bid_update else "state"
-    state = {"type": message_type, "lot": lot_info, "bidders": bidder_info}
+    state = {"type": message_type, "lot": lot_info, "bidders": bidder_info, "theme": session.theme}
     await broadcast_message(state)
 
 async def broadcast_message(message):

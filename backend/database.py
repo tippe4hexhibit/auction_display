@@ -1,11 +1,15 @@
 import logging
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, ForeignKey, Boolean
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, ForeignKey, Boolean, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
 import os
 
 logger = logging.getLogger("adbackend")
+
+# Keep in sync with the THEMES keys in frontend/src/themes.js
+ALLOWED_THEMES = {"classic", "fourh_green", "fourh_green_solid", "high_contrast"}
+DEFAULT_THEME = "classic"
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/auction.db")
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {})
@@ -38,6 +42,7 @@ class AuctionSession(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     current_lot_index = Column(Integer, default=-1)
+    theme = Column(String, default=DEFAULT_THEME)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     is_active = Column(Boolean, default=True)
@@ -75,7 +80,17 @@ def init_database():
     """Initialize database tables"""
     os.makedirs("data", exist_ok=True)
     Base.metadata.create_all(bind=engine)
+    _ensure_theme_column()
     logger.info("Database initialized")
+
+def _ensure_theme_column():
+    """create_all() only creates missing tables, not missing columns on
+    existing ones, so add `theme` by hand for databases created before it existed."""
+    with engine.connect() as conn:
+        columns = [row[1] for row in conn.execute(text("PRAGMA table_info(auction_sessions)"))]
+        if "theme" not in columns:
+            conn.execute(text(f"ALTER TABLE auction_sessions ADD COLUMN theme VARCHAR DEFAULT '{DEFAULT_THEME}'"))
+            conn.commit()
 
 def get_or_create_session(db):
     """Get or create the current auction session"""

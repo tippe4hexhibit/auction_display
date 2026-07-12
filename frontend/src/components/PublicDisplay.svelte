@@ -1,5 +1,6 @@
 <script>
     import { onMount, tick } from 'svelte';
+    import { THEMES, DEFAULT_THEME } from '../themes.js';
     let lot = {};
     let bidders = [];
     let leftColumnBidders = [];
@@ -8,10 +9,13 @@
     let scrollDuration = 10;
     let viewportEl;
     let innerEl;
+    let themeName = DEFAULT_THEME;
 
     const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
     // Pixels per second for the scroll; increase to scroll faster
     const SCROLL_SPEED_PX_PER_SEC = 40;
+
+    $: theme = THEMES[themeName] || THEMES[DEFAULT_THEME];
 
     function distributeBidders(bidderList) {
         if (bidderList.length === 0) {
@@ -54,6 +58,7 @@
                 lot = stateData.lot;
                 bidders = stateData.bidders || [];
             }
+            if (stateData.theme) themeName = stateData.theme;
         } catch (error) {
             console.error('Failed to fetch initial state:', error);
         }
@@ -65,6 +70,7 @@
             const data = JSON.parse(event.data);
             if (data.lot) lot = data.lot;
             if (Array.isArray(data.bidders)) bidders = data.bidders;
+            if (data.theme) themeName = data.theme;
         };
 
         fetchInitialState();
@@ -79,16 +85,20 @@
         padding: 20px;
         font-family: Arial, sans-serif;
         box-sizing: border-box;
+        background-color: var(--bg, #ffffff);
+        color: var(--text, #000000);
     }
 
     .header {
         text-align: center;
-        border: 2px solid black;
+        border: 2px solid var(--border, #000000);
         padding: 10px;
         margin-bottom: 20px;
         font-size: 3rem;
         font-weight: bold;
         flex-shrink: 0;
+        background-color: var(--header-bg, #ffffff);
+        color: var(--header-text, #000000);
     }
 
     .content {
@@ -122,7 +132,7 @@
 
     .scroll-separator {
         margin: 24px 0;
-        border-top: 6px solid #999;
+        border-top: 6px solid var(--separator-color, #999999);
     }
 
     .bidders-container {
@@ -148,7 +158,7 @@
     }
 
     .lot-info {
-        border: 2px solid black;
+        border: 2px solid var(--border, #000000);
         padding: 10px;
         margin-top: 20px;
         flex-shrink: 0;
@@ -160,19 +170,30 @@
     }
 
     .lot-info th, .lot-info td {
-        border: 1px solid black;
+        border: 1px solid var(--border, #000000);
         padding: 8px;
         text-align: center;
         font-size: 2.4rem;
     }
 
     .lot-info th {
-        background-color: #f0f0f0;
+        background-color: var(--table-header-bg, #f0f0f0);
         font-weight: bold;
     }
 </style>
 
-<div class="container">
+<div
+    class="container"
+    style="
+        --bg: {theme.background};
+        --text: {theme.text};
+        --border: {theme.borderColor};
+        --header-bg: {theme.headerBg};
+        --header-text: {theme.headerText};
+        --table-header-bg: {theme.tableHeaderBg};
+        --separator-color: {theme.separatorColor};
+    "
+>
     <div class="header">
         Tippecanoe County 4-H Livestock Auction
     </div>
