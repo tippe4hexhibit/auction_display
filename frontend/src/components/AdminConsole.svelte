@@ -220,13 +220,12 @@
 <div>
   <h2>Admin Console</h2>
 
-  <ThemePicker currentTheme={theme} />
-
   <div class="tab-buttons">
     <button class:active={currentTab === 'main'} on:click={() => currentTab = 'main'}>Main Control</button>
     <button class:active={currentTab === 'sale'} on:click={() => currentTab = 'sale'}>Sale List</button>
     <button class:active={currentTab === 'buyers'} on:click={() => currentTab = 'buyers'}>Buyer List</button>
     <button class:active={currentTab === 'users'} on:click={() => currentTab = 'users'}>User Management</button>
+    <button class:active={currentTab === 'preferences'} on:click={() => currentTab = 'preferences'}>Preferences</button>
     <button class:active={currentTab === 'logging'} on:click={() => currentTab = 'logging'}>Logging</button>
   </div>
 
@@ -247,6 +246,8 @@
     <BuyerList {buyerData} onFileUpload={handleFileUpload} />
   {:else if currentTab === 'users'}
     <UserManagement />
+  {:else if currentTab === 'preferences'}
+    <ThemePicker currentTheme={theme} />
   {:else if currentTab === 'logging'}
     <Logging {logMessages} />
   {/if}
