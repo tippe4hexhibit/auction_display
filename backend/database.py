@@ -81,7 +81,25 @@ def init_database():
     os.makedirs("data", exist_ok=True)
     Base.metadata.create_all(bind=engine)
     _ensure_theme_column()
+    _ensure_default_admin()
     logger.info("Database initialized")
+
+def _ensure_default_admin():
+    """Seed a real `admin` row on a fresh database so the account is a normal
+    DB-managed user from the start — visible in /api/users and changeable via
+    the usual change-password flow, instead of a hardcoded bypass that never
+    shows up there. Only runs when the users table is empty, so it never
+    overwrites an existing account."""
+    from auth import get_password_hash
+
+    db = SessionLocal()
+    try:
+        if db.query(User).count() == 0:
+            db.add(User(username="admin", password_hash=get_password_hash("admin123"), is_admin=True))
+            db.commit()
+            logger.info("No users found — created default admin user (admin/admin123). Change this password after logging in.")
+    finally:
+        db.close()
 
 def _ensure_theme_column():
     """create_all() only creates missing tables, not missing columns on

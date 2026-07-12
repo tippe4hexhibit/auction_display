@@ -407,7 +407,7 @@ async def delete_user_endpoint(username: str, db: Session = Depends(get_db), use
         await broadcast_message({"type": "log", "message": f"Deleted user: {username}"})
         return {"message": f"User {username} deleted successfully"}
     else:
-        raise HTTPException(status_code=400, detail="Cannot delete user (user not found or is default admin)")
+        raise HTTPException(status_code=400, detail="Cannot delete user (user not found, or this is the last remaining account)")
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):

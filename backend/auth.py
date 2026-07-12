@@ -14,9 +14,6 @@ ACCESS_TOKEN_EXPIRE_HOURS = 24
 
 security = HTTPBearer()
 
-ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD_HASH = _bcrypt.hashpw(b"admin123", _bcrypt.gensalt()).decode("utf-8")
-
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return _bcrypt.checkpw(
         plain_password.encode("utf-8"),
@@ -55,17 +52,10 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     except InvalidTokenError:
         raise credentials_exception
 
-def authenticate_user(username: str, password: str, db: Session = None) -> bool:
-    if username == ADMIN_USERNAME and verify_password(password, ADMIN_PASSWORD_HASH):
-        return True
-
-    if db:
-        from database import User
-        user = db.query(User).filter(User.username == username).first()
-        if user and verify_password(password, user.password_hash):
-            return True
-
-    return False
+def authenticate_user(username: str, password: str, db: Session) -> bool:
+    from database import User
+    user = db.query(User).filter(User.username == username).first()
+    return bool(user and verify_password(password, user.password_hash))
 
 def create_user(username: str, password: str, db: Session) -> bool:
     from database import User
@@ -98,11 +88,12 @@ def get_all_users(db: Session):
 def delete_user(username: str, db: Session) -> bool:
     from database import User
 
-    if username == ADMIN_USERNAME:
-        return False
-
     user = db.query(User).filter(User.username == username).first()
     if not user:
+        return False
+
+    # Never delete the last remaining account — that would lock everyone out.
+    if db.query(User).count() <= 1:
         return False
 
     db.delete(user)
