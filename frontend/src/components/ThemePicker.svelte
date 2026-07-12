@@ -56,7 +56,11 @@
         height: 1.1rem;
         border-radius: 50%;
         flex-shrink: 0;
-        border: 1px solid rgba(0, 0, 0, 0.3);
+        /* Fixed neutral ring so the dot stays visible even for themes
+           whose own border/header colors are white (e.g. solid presets
+           with an inverted header) — never rely on theme colors here. */
+        border: 2px solid rgba(0, 0, 0, 0.35);
+        box-sizing: border-box;
     }
     .reset-btn {
         margin-left: auto;
@@ -84,7 +88,7 @@
                 on:click={() => applyTheme(name)}
                 disabled={saving}
             >
-                <span class="swatch-preview" style="background: {theme.headerBg}; border-color: {theme.borderColor};"></span>
+                <span class="swatch-preview" style="background: {theme.background};"></span>
                 {theme.label}
             </button>
         {/each}
