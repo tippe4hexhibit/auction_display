@@ -1,12 +1,12 @@
 <script>
-  import FairEntrySync from './FairEntrySync.svelte';
+  import FairEntrySyncStatus from './FairEntrySyncStatus.svelte';
 
   export let buyerData = [];
   export let onFileUpload;
-  export let fairEntrySettings = {};
-  export let onSaveFairEntrySettings;
-  export let onToggleFairEntrySync;
-  export let onSyncFairEntryNow;
+  export let buyerSyncStatus = {};
+  export let onBuyerSyncIntervalChange;
+  export let onToggleBuyerSync;
+  export let onSyncBuyersNow;
 
   $: sortedBuyerData = (buyerData || []).sort((a, b) => {
     const aId = parseInt(a.Identifier) || 0;
@@ -25,11 +25,12 @@
   .drop-zone:hover { background: #eef; border-color: #55f; cursor: pointer; }
 </style>
 
-<FairEntrySync
-  settings={fairEntrySettings}
-  onSaveSettings={onSaveFairEntrySettings}
-  onToggleSync={onToggleFairEntrySync}
-  onSyncNow={onSyncFairEntryNow}
+<FairEntrySyncStatus
+  label="FairEntry Buyer Auto-Sync"
+  status={buyerSyncStatus}
+  onIntervalChange={onBuyerSyncIntervalChange}
+  onToggle={onToggleBuyerSync}
+  onSyncNow={onSyncBuyersNow}
 />
 
 <div class="section">

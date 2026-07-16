@@ -28,6 +28,10 @@
                 bidders = data.bidders;
                 currentBidder = bidders[bidders.length - 1] || null;
             }
+            // A FairEntry sale sync (background auto-sync or a manual Sync
+            // Now) replaces lot data without a lot-navigation event, so it
+            // doesn't come with a `lot` field on this message - re-fetch.
+            if (data.type === 'sale_updated') fetchInitialState();
         };
         
         // Fetch initial data on mount
