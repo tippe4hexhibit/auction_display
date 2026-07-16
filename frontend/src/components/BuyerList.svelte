@@ -1,7 +1,13 @@
 <script>
+  import FairEntrySync from './FairEntrySync.svelte';
+
   export let buyerData = [];
   export let onFileUpload;
-  
+  export let fairEntrySettings = {};
+  export let onSaveFairEntrySettings;
+  export let onToggleFairEntrySync;
+  export let onSyncFairEntryNow;
+
   $: sortedBuyerData = (buyerData || []).sort((a, b) => {
     const aId = parseInt(a.Identifier) || 0;
     const bId = parseInt(b.Identifier) || 0;
@@ -18,6 +24,13 @@
   .drop-zone { border: 2px dashed #888; padding: 2rem; margin-top: 1rem; text-align: center; background: #fff; font-weight: bold; color: #555; }
   .drop-zone:hover { background: #eef; border-color: #55f; cursor: pointer; }
 </style>
+
+<FairEntrySync
+  settings={fairEntrySettings}
+  onSaveSettings={onSaveFairEntrySettings}
+  onToggleSync={onToggleFairEntrySync}
+  onSyncNow={onSyncFairEntryNow}
+/>
 
 <div class="section">
   <h3>Buyer List ({(buyerData || []).length} buyers)</h3>

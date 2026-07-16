@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from pathlib import Path
 import logging.config
@@ -15,11 +16,15 @@ import shutil
 from pathlib import Path
 from sqlalchemy.orm import Session
 from database import (
-    init_database, get_db, get_or_create_session,
+    init_database, get_db, get_or_create_session, get_or_create_fairentry_settings,
     SaleProgram, Buyer, BidderLot, AuctionSession, User,
     ALLOWED_THEMES
 )
 from auth import authenticate_user, create_access_token, require_auth, create_user, change_user_password, get_all_users, delete_user
+from fairentry_sync import (
+    encrypt_password, perform_sync, fairentry_sync_loop, settings_to_dict
+)
+from ws_manager import websockets, broadcast_message
 
 class LoginRequest(BaseModel):
     username: str
@@ -31,6 +36,15 @@ class LoginResponse(BaseModel):
 
 class ThemeRequest(BaseModel):
     theme: str
+
+class FairEntrySettingsRequest(BaseModel):
+    username: str
+    password: str | None = None
+    fair_title: str
+    sync_interval_minutes: int
+
+class FairEntrySyncToggleRequest(BaseModel):
+    enabled: bool
 
 LOGGING_CONFIG = {
     "version": 1,
@@ -65,7 +79,12 @@ if os.path.exists(frontend_dist_path):
 
 init_database()
 
-websockets = []
+@app.on_event("startup")
+async def start_fairentry_sync_loop():
+    # Keep a strong reference on app.state - asyncio only holds a weak
+    # reference to tasks, so an unreferenced task can be garbage collected
+    # mid-run, silently killing the background loop.
+    app.state.fairentry_sync_task = asyncio.create_task(fairentry_sync_loop())
 
 @app.post("/api/auth/login")
 async def login(login_request: LoginRequest, db: Session = Depends(get_db)):
@@ -152,6 +171,16 @@ async def upload_buyer_list(file: UploadFile = File(...), db: Session = Depends(
     db.commit()
     message = f"Buyer list processed: {added_count} added, {updated_count} updated"
     logger.info(message)
+
+    fairentry_settings = get_or_create_fairentry_settings(db)
+    if fairentry_settings.sync_enabled:
+        fairentry_settings.sync_enabled = False
+        db.commit()
+        disable_message = "Auto-sync disabled: manual Buyer List upload took precedence"
+        logger.info(disable_message)
+        await broadcast_message({"type": "fairentry_status", **settings_to_dict(fairentry_settings)})
+        await broadcast_message({"type": "log", "message": disable_message})
+
     await broadcast_state(db)
     await broadcast_message({"type": "log", "message": message})
     return {"message": message, "added": added_count, "updated": updated_count}
@@ -178,6 +207,48 @@ async def get_buyers(db: Session = Depends(get_db)):
         }
         for buyer in buyers
     ]
+
+@app.get("/api/fairentry/settings")
+async def get_fairentry_settings_endpoint(db: Session = Depends(get_db), user: dict = Depends(require_auth)):
+    settings = get_or_create_fairentry_settings(db)
+    return settings_to_dict(settings)
+
+@app.post("/api/fairentry/settings")
+async def update_fairentry_settings(request: FairEntrySettingsRequest, db: Session = Depends(get_db), user: dict = Depends(require_auth)):
+    settings = get_or_create_fairentry_settings(db)
+    settings.username = request.username
+    settings.fair_title = request.fair_title
+    settings.sync_interval_minutes = request.sync_interval_minutes
+    if request.password:
+        settings.password_encrypted = encrypt_password(request.password)
+    settings.consecutive_failures = 0
+    db.commit()
+
+    await broadcast_message({"type": "fairentry_status", **settings_to_dict(settings)})
+    await broadcast_message({"type": "log", "message": "FairEntry sync settings updated"})
+    return settings_to_dict(settings)
+
+@app.post("/api/fairentry/sync-toggle")
+async def toggle_fairentry_sync(request: FairEntrySyncToggleRequest, db: Session = Depends(get_db), user: dict = Depends(require_auth)):
+    settings = get_or_create_fairentry_settings(db)
+    settings.sync_enabled = request.enabled
+    if request.enabled:
+        settings.consecutive_failures = 0
+    db.commit()
+
+    message = f"FairEntry auto-sync {'enabled' if request.enabled else 'disabled'}"
+    await broadcast_message({"type": "fairentry_status", **settings_to_dict(settings)})
+    await broadcast_message({"type": "log", "message": message})
+
+    if request.enabled:
+        await perform_sync(db)
+
+    return settings_to_dict(settings)
+
+@app.post("/api/fairentry/sync-now")
+async def sync_fairentry_now(db: Session = Depends(get_db), user: dict = Depends(require_auth)):
+    result = await perform_sync(db)
+    return result
 
 @app.get("/api/state")
 async def get_current_state(db: Session = Depends(get_db)):
@@ -413,10 +484,12 @@ async def delete_user_endpoint(username: str, db: Session = Depends(get_db), use
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
     websockets.append(ws)
+    logger.info(f"WS connected, total clients={len(websockets)}")
     try:
         while True:
             await ws.receive_text()
-    except:
+    except Exception as e:
+        logger.info(f"WS disconnected ({e!r}), total clients={len(websockets) - 1}")
         websockets.remove(ws)
 
 async def broadcast_state(db: Session, bid_update=False):
@@ -442,13 +515,6 @@ async def broadcast_state(db: Session, bid_update=False):
     message_type = "bid_update" if bid_update else "state"
     state = {"type": message_type, "lot": lot_info, "bidders": bidder_info, "theme": session.theme}
     await broadcast_message(state)
-
-async def broadcast_message(message):
-    for ws in websockets:
-        try:
-            await ws.send_json(message)
-        except:
-            websockets.remove(ws)
 
 @app.get("/{full_path:path}")
 async def serve_spa(full_path: str):
