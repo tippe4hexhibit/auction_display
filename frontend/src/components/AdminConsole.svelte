@@ -210,6 +210,10 @@
   async function nextLot() {
     try {
       await makeAuthenticatedRequest(`${API_BASE}/api/lot/next`, { method: 'POST' });
+      // Don't rely solely on the WebSocket broadcast to reflect this: right
+      // after login (a fresh mount/reconnect), the socket may not have
+      // finished connecting yet, which would silently drop this update.
+      await fetchCurrentState();
     } catch (error) {
       alert('Failed to navigate to next lot: ' + error.message);
     }
@@ -218,6 +222,7 @@
   async function prevLot() {
     try {
       await makeAuthenticatedRequest(`${API_BASE}/api/lot/prev`, { method: 'POST' });
+      await fetchCurrentState();
     } catch (error) {
       alert('Failed to navigate to previous lot: ' + error.message);
     }
