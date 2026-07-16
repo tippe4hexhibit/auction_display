@@ -27,10 +27,13 @@ FROM python:3.12-alpine AS backend
 WORKDIR /app
 
 # Install system dependencies for Python packages
+# git is required by pip to fetch the fairentry-api dependency from its
+# git+https:// URL in requirements.txt
 RUN apk add --no-cache \
     gcc \
     musl-dev \
     libffi-dev \
+    git \
     && rm -rf /var/cache/apk/*
 
 # Copy backend requirements and install Python dependencies
