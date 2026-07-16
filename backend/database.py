@@ -47,6 +47,21 @@ class AuctionSession(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     is_active = Column(Boolean, default=True)
 
+class FairEntrySettings(Base):
+    __tablename__ = "fairentry_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String)
+    password_encrypted = Column(String)
+    fair_title = Column(String)
+    sync_enabled = Column(Boolean, default=False)
+    sync_interval_minutes = Column(Integer, default=15)
+    last_sync_at = Column(DateTime, nullable=True)
+    last_sync_status = Column(String, default="never")
+    last_sync_message = Column(Text, nullable=True)
+    consecutive_failures = Column(Integer, default=0)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 class User(Base):
     __tablename__ = "users"
     
@@ -119,3 +134,13 @@ def get_or_create_session(db):
         db.commit()
         db.refresh(session)
     return session
+
+def get_or_create_fairentry_settings(db):
+    """Get or create the singleton FairEntry sync settings row"""
+    settings = db.query(FairEntrySettings).first()
+    if not settings:
+        settings = FairEntrySettings()
+        db.add(settings)
+        db.commit()
+        db.refresh(settings)
+    return settings

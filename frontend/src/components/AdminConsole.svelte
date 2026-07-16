@@ -18,6 +18,7 @@
   let logMessages = [];
   let currentTab = 'main';
   let theme = DEFAULT_THEME;
+  let fairEntrySettings = {};
   const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
   async function fetchSaleData() {
@@ -39,6 +40,15 @@
     } catch (error) {
       console.error('Failed to fetch buyer data:', error);
       buyerData = [];
+    }
+  }
+
+  async function fetchFairEntrySettings() {
+    try {
+      const res = await makeAuthenticatedRequest(`${API_BASE}/api/fairentry/settings`);
+      fairEntrySettings = await res.json();
+    } catch (error) {
+      console.error('Failed to fetch FairEntry settings:', error);
     }
   }
 
@@ -76,7 +86,18 @@
       }
     }
 
+    connectWebSocket();
+
+    // Fetch initial data on mount
+    fetchSaleData();
+    fetchBuyerData();
+    fetchCurrentState();
+    fetchFairEntrySettings();
+  });
+
+  function connectWebSocket() {
     ws = new WebSocket(API_BASE.replace('http', 'ws') + '/ws');
+
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       const timestamp = new Date().toLocaleTimeString();
@@ -101,13 +122,30 @@
         }
       }
       if (data.theme) theme = data.theme;
+
+      if (data.type === 'fairentry_status') {
+        const { type, ...rest } = data;
+        fairEntrySettings = rest;
+      }
+      if (data.type === 'buyers_updated') {
+        fetchBuyerData();
+      }
     };
-    
-    // Fetch initial data on mount
-    fetchSaleData();
-    fetchBuyerData();
-    fetchCurrentState();
-  });
+
+    // The connection can drop silently (backend restart, network blip, laptop
+    // sleep) with no user-visible error - without a reconnect, this screen
+    // would keep showing stale lot/bid/FairEntry state indefinitely. Re-fetch
+    // everything on reconnect to catch up on whatever was missed while down.
+    ws.onclose = () => {
+      setTimeout(() => {
+        connectWebSocket();
+        fetchSaleData();
+        fetchBuyerData();
+        fetchCurrentState();
+        fetchFairEntrySettings();
+      }, 2000);
+    };
+  }
 
   async function addBidder() {
     if (bidderNumber) {
@@ -149,6 +187,7 @@
         alert('Upload complete');
         await fetchSaleData();
         await fetchBuyerData();
+        await fetchFairEntrySettings();
       } else {
         const error = await response.json();
         alert(`Upload failed: ${error.detail}`);
@@ -172,6 +211,54 @@
       }
     } catch (error) {
       alert('Undo failed: ' + error.message);
+    }
+  }
+
+  async function handleSaveFairEntrySettings(settings) {
+    try {
+      const response = await makeAuthenticatedRequest(`${API_BASE}/api/fairentry/settings`, {
+        method: 'POST',
+        body: JSON.stringify(settings)
+      });
+      if (response.ok) {
+        fairEntrySettings = await response.json();
+      } else {
+        const error = await response.json();
+        alert(`Failed to save FairEntry settings: ${error.detail}`);
+      }
+    } catch (error) {
+      alert('Failed to save FairEntry settings: ' + error.message);
+    }
+  }
+
+  async function handleToggleFairEntrySync(enabled) {
+    try {
+      const response = await makeAuthenticatedRequest(`${API_BASE}/api/fairentry/sync-toggle`, {
+        method: 'POST',
+        body: JSON.stringify({ enabled })
+      });
+      if (response.ok) {
+        fairEntrySettings = await response.json();
+      } else {
+        const error = await response.json();
+        alert(`Failed to toggle FairEntry sync: ${error.detail}`);
+      }
+    } catch (error) {
+      alert('Failed to toggle FairEntry sync: ' + error.message);
+    }
+  }
+
+  async function handleSyncFairEntryNow() {
+    try {
+      const response = await makeAuthenticatedRequest(`${API_BASE}/api/fairentry/sync-now`, {
+        method: 'POST'
+      });
+      const result = await response.json();
+      await fetchFairEntrySettings();
+      await fetchBuyerData();
+      return result;
+    } catch (error) {
+      return { message: 'Sync failed: ' + error.message };
     }
   }
 
@@ -243,7 +330,14 @@
   {:else if currentTab === 'sale'}
     <SaleList {saleData} onFileUpload={handleFileUpload} />
   {:else if currentTab === 'buyers'}
-    <BuyerList {buyerData} onFileUpload={handleFileUpload} />
+    <BuyerList
+      {buyerData}
+      onFileUpload={handleFileUpload}
+      {fairEntrySettings}
+      onSaveFairEntrySettings={handleSaveFairEntrySettings}
+      onToggleFairEntrySync={handleToggleFairEntrySync}
+      onSyncFairEntryNow={handleSyncFairEntryNow}
+    />
   {:else if currentTab === 'users'}
     <UserManagement />
   {:else if currentTab === 'preferences'}
