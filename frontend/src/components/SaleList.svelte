@@ -1,6 +1,16 @@
 <script>
+  import FairEntrySyncStatus from './FairEntrySyncStatus.svelte';
+  import SaleOrderPicker from './SaleOrderPicker.svelte';
+
   export let saleData = [];
   export let onFileUpload;
+  export let saleOrderOptions = [];
+  export let saleSyncStatus = {};
+  export let onRefreshSaleOrders;
+  export let onSelectSaleOrder;
+  export let onSaleSyncIntervalChange;
+  export let onToggleSaleSync;
+  export let onSyncSaleNow;
 </script>
 
 <style>
@@ -12,6 +22,21 @@
   .drop-zone { border: 2px dashed #888; padding: 2rem; margin-top: 1rem; text-align: center; background: #fff; font-weight: bold; color: #555; }
   .drop-zone:hover { background: #eef; border-color: #55f; cursor: pointer; }
 </style>
+
+<SaleOrderPicker
+  options={saleOrderOptions}
+  selectedId={saleSyncStatus.selected_sale_order_id}
+  onRefresh={onRefreshSaleOrders}
+  onSelect={onSelectSaleOrder}
+/>
+
+<FairEntrySyncStatus
+  label="FairEntry Sale Auto-Sync"
+  status={saleSyncStatus}
+  onIntervalChange={onSaleSyncIntervalChange}
+  onToggle={onToggleSaleSync}
+  onSyncNow={onSyncSaleNow}
+/>
 
 <div class="section">
   <h3>Sale List ({(saleData || []).length} lots)</h3>

@@ -1,40 +1,29 @@
 <script>
-  export let settings = {};
-  export let onSaveSettings;
-  export let onToggleSync;
+  export let label = 'FairEntry Auto-Sync';
+  export let status = {};
+  export let onIntervalChange;
+  export let onToggle;
   export let onSyncNow;
 
-  let username = '';
-  let password = '';
-  let fairTitle = '';
   let syncIntervalMinutes = 15;
-  let saving = false;
-  let syncing = false;
   let toggling = false;
+  let syncing = false;
   let syncNowMessage = '';
 
   let initialized = false;
-  $: if (!initialized && settings && settings.username !== undefined) {
-    username = settings.username || '';
-    fairTitle = settings.fair_title || '';
-    syncIntervalMinutes = settings.sync_interval_minutes || 15;
+  $: if (!initialized && status && status.sync_interval_minutes !== undefined) {
+    syncIntervalMinutes = status.sync_interval_minutes || 15;
     initialized = true;
   }
 
-  async function saveSettings() {
-    saving = true;
-    try {
-      await onSaveSettings({ username, password, fair_title: fairTitle, sync_interval_minutes: syncIntervalMinutes });
-      password = '';
-    } finally {
-      saving = false;
-    }
+  async function saveInterval() {
+    await onIntervalChange(syncIntervalMinutes);
   }
 
   async function toggleSync() {
     toggling = true;
     try {
-      await onToggleSync(!settings.sync_enabled);
+      await onToggle(!status.sync_enabled);
     } finally {
       toggling = false;
     }
@@ -79,36 +68,21 @@
 </style>
 
 <div class="section">
-  <h3>FairEntry Auto-Sync</h3>
+  <h3>{label}</h3>
 
-  <div class="form-group">
-    <label for="fe-username">FairEntry Username</label>
-    <input id="fe-username" type="text" bind:value={username} placeholder="username@example.com" />
-  </div>
-  <div class="form-group">
-    <label for="fe-password">FairEntry Password</label>
-    <input id="fe-password" type="password" bind:value={password} placeholder={settings.has_password ? '•••••• (saved — leave blank to keep)' : 'Enter password'} />
-  </div>
-  <div class="form-group">
-    <label for="fe-fair-title">Fair Title</label>
-    <input id="fe-fair-title" type="text" bind:value={fairTitle} placeholder="2026 County Fair" />
-  </div>
   <div class="form-group">
     <label for="fe-interval">Sync Interval (minutes)</label>
-    <input id="fe-interval" type="number" min="1" bind:value={syncIntervalMinutes} />
+    <input id="fe-interval" type="number" min="1" bind:value={syncIntervalMinutes} on:change={saveInterval} />
   </div>
 
-  <button class="btn" on:click={saveSettings} disabled={saving}>
-    {saving ? 'Saving...' : 'Save Settings'}
-  </button>
   <button
     class="btn"
-    class:btn-toggle-on={!settings.sync_enabled}
-    class:btn-toggle-off={settings.sync_enabled}
+    class:btn-toggle-on={!status.sync_enabled}
+    class:btn-toggle-off={status.sync_enabled}
     on:click={toggleSync}
     disabled={toggling}
   >
-    {settings.sync_enabled ? 'Disable Auto-Sync' : 'Enable Auto-Sync'}
+    {status.sync_enabled ? 'Disable Auto-Sync' : 'Enable Auto-Sync'}
   </button>
   <button class="btn" on:click={syncNow} disabled={syncing}>
     {syncing ? 'Syncing...' : 'Sync Now'}
@@ -121,24 +95,30 @@
   <div class="status">
     <div class="status-row">
       <span>Auto-Sync:</span>
-      <span class="badge" class:badge-on={settings.sync_enabled} class:badge-off={!settings.sync_enabled}>
-        {settings.sync_enabled ? 'ON' : 'OFF'}
+      <span class="badge" class:badge-on={status.sync_enabled} class:badge-off={!status.sync_enabled}>
+        {status.sync_enabled ? 'ON' : 'OFF'}
       </span>
     </div>
     <div class="status-row">
       <span>Last Sync:</span>
-      <span>{formatTimestamp(settings.last_sync_at)}</span>
+      <span>{formatTimestamp(status.last_sync_at)}</span>
     </div>
     <div class="status-row">
       <span>Status:</span>
-      <span class:status-success={settings.last_sync_status === 'success'} class:status-error={settings.last_sync_status === 'error'}>
-        {settings.last_sync_status || 'never'}
+      <span class:status-success={status.last_sync_status === 'success'} class:status-error={status.last_sync_status === 'error'}>
+        {status.last_sync_status || 'never'}
       </span>
     </div>
-    {#if settings.last_sync_message}
+    {#if status.last_sync_message}
       <div class="status-row">
         <span>Message:</span>
-        <span>{settings.last_sync_message}</span>
+        <span>{status.last_sync_message}</span>
+      </div>
+    {/if}
+    {#if status.consecutive_failures}
+      <div class="status-row">
+        <span>Consecutive failures:</span>
+        <span>{status.consecutive_failures}</span>
       </div>
     {/if}
   </div>

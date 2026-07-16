@@ -16,13 +16,16 @@ import shutil
 from pathlib import Path
 from sqlalchemy.orm import Session
 from database import (
-    init_database, get_db, get_or_create_session, get_or_create_fairentry_settings,
-    SaleProgram, Buyer, BidderLot, AuctionSession, User,
+    init_database, get_db, get_or_create_session, ordered_lots, clamp_current_lot_index,
+    get_active_sale_order_id, get_or_create_fairentry_connection, get_or_create_fairentry_sync_status,
+    SaleProgram, Buyer, BidderLot, AuctionSession, User, FairEntrySaleOrderOption,
     ALLOWED_THEMES
 )
 from auth import authenticate_user, create_access_token, require_auth, create_user, change_user_password, get_all_users, delete_user
 from fairentry_sync import (
-    encrypt_password, perform_sync, fairentry_sync_loop, settings_to_dict
+    encrypt_password, perform_buyer_sync, perform_sale_sync, refresh_sale_order_options,
+    select_sale_order, fairentry_sync_loop, connection_to_dict, status_to_dict,
+    sale_order_option_to_dict,
 )
 from ws_manager import websockets, broadcast_message
 
@@ -37,14 +40,21 @@ class LoginResponse(BaseModel):
 class ThemeRequest(BaseModel):
     theme: str
 
-class FairEntrySettingsRequest(BaseModel):
+class FairEntryConnectionRequest(BaseModel):
     username: str
     password: str | None = None
     fair_title: str
+
+class FairEntrySyncIntervalRequest(BaseModel):
     sync_interval_minutes: int
 
 class FairEntrySyncToggleRequest(BaseModel):
     enabled: bool
+
+class SaleOrderSelectRequest(BaseModel):
+    sale_order_id: int
+
+VALID_SYNC_TARGETS = {"buyers": perform_buyer_sync, "sale": perform_sale_sync}
 
 LOGGING_CONFIG = {
     "version": 1,
@@ -103,33 +113,53 @@ async def upload_sale_program(file: UploadFile = File(...), db: Session = Depend
     df = pd.read_excel(file.file)
     df.rename(columns={"Sale #": "LotNumber", "Exhibitor": "StudentName", "Department": "Department"}, inplace=True)
     df.replace({np.nan: None}, inplace=True)
-    
-    existing_lots = {lot.lot_number: lot for lot in db.query(SaleProgram).all()}
-    
+
+    active_sale_order_id = get_active_sale_order_id(db)
+    existing_lots = {
+        lot.lot_number: lot for lot in
+        db.query(SaleProgram).filter(SaleProgram.sale_order_id == active_sale_order_id).all()
+    }
+
     updated_count = 0
     added_count = 0
-    
-    for _, row in df.iterrows():
+
+    for index, row in df.iterrows():
         lot_number_str = str(row.get("LotNumber", ""))
         student_name_str = str(row.get("StudentName", ""))
         department_str = str(row.get("Department", ""))
-        
+
         if lot_number_str in existing_lots:
             existing_lot = existing_lots[lot_number_str]
-            if (existing_lot.student_name != student_name_str or 
+            if (existing_lot.student_name != student_name_str or
                 existing_lot.department != department_str):
                 existing_lot.student_name = student_name_str
                 existing_lot.department = department_str
                 updated_count += 1
+            existing_lot.sort_order = index
         else:
             lot = SaleProgram(
                 lot_number=lot_number_str,
                 student_name=student_name_str,
-                department=department_str
+                department=department_str,
+                sort_order=index,
+                sale_order_id=active_sale_order_id
             )
             db.add(lot)
             added_count += 1
-    
+
+    sale_sync_status = get_or_create_fairentry_sync_status(db, "sale")
+    if sale_sync_status.sync_enabled:
+        sale_sync_status.sync_enabled = False
+        db.commit()
+        disable_message = "Sale auto-sync disabled: manual Sale List upload took precedence"
+        logger.info(disable_message)
+        await broadcast_message({"type": "fairentry_sale_sync_status", **status_to_dict(sale_sync_status)})
+        await broadcast_message({"type": "log", "message": disable_message})
+
+    db.flush()
+    session = get_or_create_session(db)
+    clamp_current_lot_index(session, ordered_lots(db).count())
+
     db.commit()
     message = f"Sale program processed: {added_count} added, {updated_count} updated"
     logger.info(message)
@@ -172,13 +202,13 @@ async def upload_buyer_list(file: UploadFile = File(...), db: Session = Depends(
     message = f"Buyer list processed: {added_count} added, {updated_count} updated"
     logger.info(message)
 
-    fairentry_settings = get_or_create_fairentry_settings(db)
-    if fairentry_settings.sync_enabled:
-        fairentry_settings.sync_enabled = False
+    buyer_sync_status = get_or_create_fairentry_sync_status(db, "buyers")
+    if buyer_sync_status.sync_enabled:
+        buyer_sync_status.sync_enabled = False
         db.commit()
-        disable_message = "Auto-sync disabled: manual Buyer List upload took precedence"
+        disable_message = "Buyer auto-sync disabled: manual Buyer List upload took precedence"
         logger.info(disable_message)
-        await broadcast_message({"type": "fairentry_status", **settings_to_dict(fairentry_settings)})
+        await broadcast_message({"type": "fairentry_buyers_sync_status", **status_to_dict(buyer_sync_status)})
         await broadcast_message({"type": "log", "message": disable_message})
 
     await broadcast_state(db)
@@ -187,7 +217,7 @@ async def upload_buyer_list(file: UploadFile = File(...), db: Session = Depends(
 
 @app.get("/api/sale")
 async def get_sale(db: Session = Depends(get_db)):
-    lots = db.query(SaleProgram).all()
+    lots = ordered_lots(db).all()
     return [
         {
             "LotNumber": lot.lot_number,
@@ -208,53 +238,94 @@ async def get_buyers(db: Session = Depends(get_db)):
         for buyer in buyers
     ]
 
-@app.get("/api/fairentry/settings")
-async def get_fairentry_settings_endpoint(db: Session = Depends(get_db), user: dict = Depends(require_auth)):
-    settings = get_or_create_fairentry_settings(db)
-    return settings_to_dict(settings)
+@app.get("/api/fairentry/connection")
+async def get_fairentry_connection_endpoint(db: Session = Depends(get_db), user: dict = Depends(require_auth)):
+    connection = get_or_create_fairentry_connection(db)
+    return connection_to_dict(connection)
 
-@app.post("/api/fairentry/settings")
-async def update_fairentry_settings(request: FairEntrySettingsRequest, db: Session = Depends(get_db), user: dict = Depends(require_auth)):
-    settings = get_or_create_fairentry_settings(db)
-    settings.username = request.username
-    settings.fair_title = request.fair_title
-    settings.sync_interval_minutes = request.sync_interval_minutes
+@app.post("/api/fairentry/connection")
+async def update_fairentry_connection(request: FairEntryConnectionRequest, db: Session = Depends(get_db), user: dict = Depends(require_auth)):
+    connection = get_or_create_fairentry_connection(db)
+    connection.username = request.username
+    connection.fair_title = request.fair_title
     if request.password:
-        settings.password_encrypted = encrypt_password(request.password)
-    settings.consecutive_failures = 0
+        connection.password_encrypted = encrypt_password(request.password)
     db.commit()
 
-    await broadcast_message({"type": "fairentry_status", **settings_to_dict(settings)})
-    await broadcast_message({"type": "log", "message": "FairEntry sync settings updated"})
-    return settings_to_dict(settings)
+    await broadcast_message({"type": "log", "message": "FairEntry connection settings updated"})
+    return connection_to_dict(connection)
 
-@app.post("/api/fairentry/sync-toggle")
-async def toggle_fairentry_sync(request: FairEntrySyncToggleRequest, db: Session = Depends(get_db), user: dict = Depends(require_auth)):
-    settings = get_or_create_fairentry_settings(db)
-    settings.sync_enabled = request.enabled
+@app.get("/api/fairentry/sync/{target}")
+async def get_fairentry_sync_status(target: str, db: Session = Depends(get_db), user: dict = Depends(require_auth)):
+    if target not in VALID_SYNC_TARGETS:
+        raise HTTPException(status_code=404, detail=f"Unknown sync target '{target}'")
+    status = get_or_create_fairentry_sync_status(db, target)
+    return status_to_dict(status)
+
+@app.post("/api/fairentry/sync/{target}/interval")
+async def update_fairentry_sync_interval(target: str, request: FairEntrySyncIntervalRequest, db: Session = Depends(get_db), user: dict = Depends(require_auth)):
+    if target not in VALID_SYNC_TARGETS:
+        raise HTTPException(status_code=404, detail=f"Unknown sync target '{target}'")
+    status = get_or_create_fairentry_sync_status(db, target)
+    status.sync_interval_minutes = request.sync_interval_minutes
+    db.commit()
+
+    await broadcast_message({"type": f"fairentry_{target}_sync_status", **status_to_dict(status)})
+    return status_to_dict(status)
+
+@app.post("/api/fairentry/sync/{target}/toggle")
+async def toggle_fairentry_sync(target: str, request: FairEntrySyncToggleRequest, db: Session = Depends(get_db), user: dict = Depends(require_auth)):
+    if target not in VALID_SYNC_TARGETS:
+        raise HTTPException(status_code=404, detail=f"Unknown sync target '{target}'")
+    status = get_or_create_fairentry_sync_status(db, target)
+    status.sync_enabled = request.enabled
     if request.enabled:
-        settings.consecutive_failures = 0
+        status.consecutive_failures = 0
     db.commit()
 
-    message = f"FairEntry auto-sync {'enabled' if request.enabled else 'disabled'}"
-    await broadcast_message({"type": "fairentry_status", **settings_to_dict(settings)})
+    message = f"FairEntry {target} auto-sync {'enabled' if request.enabled else 'disabled'}"
+    await broadcast_message({"type": f"fairentry_{target}_sync_status", **status_to_dict(status)})
     await broadcast_message({"type": "log", "message": message})
 
     if request.enabled:
-        await perform_sync(db)
+        await VALID_SYNC_TARGETS[target](db)
 
-    return settings_to_dict(settings)
+    return status_to_dict(status)
 
-@app.post("/api/fairentry/sync-now")
-async def sync_fairentry_now(db: Session = Depends(get_db), user: dict = Depends(require_auth)):
-    result = await perform_sync(db)
+@app.post("/api/fairentry/sync/{target}/now")
+async def sync_fairentry_now(target: str, db: Session = Depends(get_db), user: dict = Depends(require_auth)):
+    if target not in VALID_SYNC_TARGETS:
+        raise HTTPException(status_code=404, detail=f"Unknown sync target '{target}'")
+    result = await VALID_SYNC_TARGETS[target](db)
     return result
+
+@app.get("/api/fairentry/sale-orders")
+async def get_fairentry_sale_orders(db: Session = Depends(get_db), user: dict = Depends(require_auth)):
+    options = db.query(FairEntrySaleOrderOption).all()
+    return [sale_order_option_to_dict(option) for option in options]
+
+@app.post("/api/fairentry/sale-orders/refresh")
+async def refresh_fairentry_sale_orders(db: Session = Depends(get_db), user: dict = Depends(require_auth)):
+    return await refresh_sale_order_options(db)
+
+@app.post("/api/fairentry/sale-orders/select")
+async def select_fairentry_sale_order(request: SaleOrderSelectRequest, db: Session = Depends(get_db), user: dict = Depends(require_auth)):
+    status_dict = select_sale_order(db, request.sale_order_id)
+    await broadcast_message({"type": "fairentry_sale_sync_status", **status_dict})
+    await broadcast_message({"type": "log", "message": f"Sale Order selection updated: {status_dict.get('selected_sale_order_name')}"})
+    # Cached rows for the newly-selected Sale Order (if it's been synced
+    # before) become the active list immediately - push that out to every
+    # client (admin Sale List, public display, auctioneer) right away rather
+    # than waiting for their next lot-navigation event.
+    await broadcast_message({"type": "sale_updated"})
+    await broadcast_state(db)
+    return status_dict
 
 @app.get("/api/state")
 async def get_current_state(db: Session = Depends(get_db)):
     session = get_or_create_session(db)
 
-    current_lot = db.query(SaleProgram).offset(session.current_lot_index).first()
+    current_lot = ordered_lots(db).offset(session.current_lot_index).first()
     if not current_lot:
         return {"lot": None, "bidders": [], "theme": session.theme}
 
@@ -288,7 +359,7 @@ async def set_theme(request: ThemeRequest, db: Session = Depends(get_db), user: 
 @app.post("/api/lot/next")
 async def next_lot(db: Session = Depends(get_db), user: dict = Depends(require_auth)):
     session = get_or_create_session(db)
-    total_lots = db.query(SaleProgram).count()
+    total_lots = ordered_lots(db).count()
     
     if session.current_lot_index + 1 < total_lots:
         session.current_lot_index += 1
@@ -313,11 +384,11 @@ async def prev_lot(db: Session = Depends(get_db), user: dict = Depends(require_a
 @app.post("/api/bidder/add/{identifier}")
 async def add_bidder(identifier: int, db: Session = Depends(get_db), user: dict = Depends(require_auth)):
     session = get_or_create_session(db)
-    
-    current_lot = db.query(SaleProgram).offset(session.current_lot_index).first()
+
+    current_lot = ordered_lots(db).offset(session.current_lot_index).first()
     if not current_lot:
         raise HTTPException(status_code=404, detail="No current lot")
-    
+
     buyer = db.query(Buyer).filter(Buyer.identifier == identifier).first()
     if not buyer:
         buyer = Buyer(identifier=identifier, name=f"Buyer {identifier}")
@@ -347,7 +418,7 @@ async def add_bidder(identifier: int, db: Session = Depends(get_db), user: dict 
 @app.get("/api/export/bidders")
 async def export_bidders(db: Session = Depends(get_db), user: dict = Depends(require_auth)):
     export_data = []
-    lots = db.query(SaleProgram).all()
+    lots = ordered_lots(db).all()
     
     for lot in lots:
         bidders = db.query(BidderLot).filter(BidderLot.lot_id == lot.id).all()
@@ -377,11 +448,11 @@ async def export_bidders(db: Session = Depends(get_db), user: dict = Depends(req
 async def undo_bidder(db: Session = Depends(get_db), user: dict = Depends(require_auth)):
     """Remove the last bidder from the current lot."""
     session = get_or_create_session(db)
-    
-    current_lot = db.query(SaleProgram).offset(session.current_lot_index).first()
+
+    current_lot = ordered_lots(db).offset(session.current_lot_index).first()
     if not current_lot:
         raise HTTPException(status_code=404, detail="No current lot")
-    
+
     last_bidder = db.query(BidderLot).filter(
         BidderLot.lot_id == current_lot.id
     ).order_by(BidderLot.created_at.desc()).first()
@@ -495,7 +566,7 @@ async def websocket_endpoint(ws: WebSocket):
 async def broadcast_state(db: Session, bid_update=False):
     session = get_or_create_session(db)
 
-    current_lot = db.query(SaleProgram).offset(session.current_lot_index).first()
+    current_lot = ordered_lots(db).offset(session.current_lot_index).first()
 
     lot_info = None
     bidder_info = []

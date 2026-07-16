@@ -6,6 +6,7 @@
   import UserManagement from './UserManagement.svelte';
   import Logging from './Logging.svelte';
   import ThemePicker from './ThemePicker.svelte';
+  import FairEntryConnection from './FairEntryConnection.svelte';
   import { makeAuthenticatedRequest } from '../utils/auth.js';
   import { DEFAULT_THEME } from '../themes.js';
 
@@ -18,7 +19,10 @@
   let logMessages = [];
   let currentTab = 'main';
   let theme = DEFAULT_THEME;
-  let fairEntrySettings = {};
+  let fairEntryConnection = {};
+  let buyerSyncStatus = {};
+  let saleSyncStatus = {};
+  let saleOrderOptions = [];
   const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
   async function fetchSaleData() {
@@ -43,12 +47,40 @@
     }
   }
 
-  async function fetchFairEntrySettings() {
+  async function fetchFairEntryConnection() {
     try {
-      const res = await makeAuthenticatedRequest(`${API_BASE}/api/fairentry/settings`);
-      fairEntrySettings = await res.json();
+      const res = await makeAuthenticatedRequest(`${API_BASE}/api/fairentry/connection`);
+      fairEntryConnection = await res.json();
     } catch (error) {
-      console.error('Failed to fetch FairEntry settings:', error);
+      console.error('Failed to fetch FairEntry connection settings:', error);
+    }
+  }
+
+  async function fetchBuyerSyncStatus() {
+    try {
+      const res = await makeAuthenticatedRequest(`${API_BASE}/api/fairentry/sync/buyers`);
+      buyerSyncStatus = await res.json();
+    } catch (error) {
+      console.error('Failed to fetch buyer sync status:', error);
+    }
+  }
+
+  async function fetchSaleSyncStatus() {
+    try {
+      const res = await makeAuthenticatedRequest(`${API_BASE}/api/fairentry/sync/sale`);
+      saleSyncStatus = await res.json();
+    } catch (error) {
+      console.error('Failed to fetch sale sync status:', error);
+    }
+  }
+
+  async function fetchSaleOrderOptions() {
+    try {
+      const res = await makeAuthenticatedRequest(`${API_BASE}/api/fairentry/sale-orders`);
+      const data = await res.json();
+      saleOrderOptions = Array.isArray(data) ? data : [];
+    } catch (error) {
+      console.error('Failed to fetch sale order options:', error);
     }
   }
 
@@ -92,7 +124,10 @@
     fetchSaleData();
     fetchBuyerData();
     fetchCurrentState();
-    fetchFairEntrySettings();
+    fetchFairEntryConnection();
+    fetchBuyerSyncStatus();
+    fetchSaleSyncStatus();
+    fetchSaleOrderOptions();
   });
 
   function connectWebSocket() {
@@ -123,12 +158,23 @@
       }
       if (data.theme) theme = data.theme;
 
-      if (data.type === 'fairentry_status') {
+      if (data.type === 'fairentry_buyers_sync_status') {
         const { type, ...rest } = data;
-        fairEntrySettings = rest;
+        buyerSyncStatus = rest;
+      }
+      if (data.type === 'fairentry_sale_sync_status') {
+        const { type, ...rest } = data;
+        saleSyncStatus = rest;
       }
       if (data.type === 'buyers_updated') {
         fetchBuyerData();
+      }
+      if (data.type === 'sale_updated') {
+        fetchSaleData();
+        fetchCurrentState();
+      }
+      if (data.type === 'sale_orders_updated') {
+        fetchSaleOrderOptions();
       }
     };
 
@@ -142,7 +188,10 @@
         fetchSaleData();
         fetchBuyerData();
         fetchCurrentState();
-        fetchFairEntrySettings();
+        fetchFairEntryConnection();
+        fetchBuyerSyncStatus();
+        fetchSaleSyncStatus();
+        fetchSaleOrderOptions();
       }, 2000);
     };
   }
@@ -187,7 +236,8 @@
         alert('Upload complete');
         await fetchSaleData();
         await fetchBuyerData();
-        await fetchFairEntrySettings();
+        await fetchBuyerSyncStatus();
+        await fetchSaleSyncStatus();
       } else {
         const error = await response.json();
         alert(`Upload failed: ${error.detail}`);
@@ -214,51 +264,112 @@
     }
   }
 
-  async function handleSaveFairEntrySettings(settings) {
+  async function handleSaveFairEntryConnection(settings) {
     try {
-      const response = await makeAuthenticatedRequest(`${API_BASE}/api/fairentry/settings`, {
+      const response = await makeAuthenticatedRequest(`${API_BASE}/api/fairentry/connection`, {
         method: 'POST',
         body: JSON.stringify(settings)
       });
       if (response.ok) {
-        fairEntrySettings = await response.json();
+        fairEntryConnection = await response.json();
       } else {
         const error = await response.json();
-        alert(`Failed to save FairEntry settings: ${error.detail}`);
+        alert(`Failed to save FairEntry connection settings: ${error.detail}`);
       }
     } catch (error) {
-      alert('Failed to save FairEntry settings: ' + error.message);
+      alert('Failed to save FairEntry connection settings: ' + error.message);
     }
   }
 
-  async function handleToggleFairEntrySync(enabled) {
+  async function handleSyncIntervalChange(target, minutes) {
     try {
-      const response = await makeAuthenticatedRequest(`${API_BASE}/api/fairentry/sync-toggle`, {
+      const response = await makeAuthenticatedRequest(`${API_BASE}/api/fairentry/sync/${target}/interval`, {
+        method: 'POST',
+        body: JSON.stringify({ sync_interval_minutes: minutes })
+      });
+      if (response.ok) {
+        const status = await response.json();
+        if (target === 'buyers') buyerSyncStatus = status;
+        else saleSyncStatus = status;
+      } else {
+        const error = await response.json();
+        alert(`Failed to update sync interval: ${error.detail}`);
+      }
+    } catch (error) {
+      alert('Failed to update sync interval: ' + error.message);
+    }
+  }
+
+  async function handleToggleSync(target, enabled) {
+    try {
+      const response = await makeAuthenticatedRequest(`${API_BASE}/api/fairentry/sync/${target}/toggle`, {
         method: 'POST',
         body: JSON.stringify({ enabled })
       });
       if (response.ok) {
-        fairEntrySettings = await response.json();
+        const status = await response.json();
+        if (target === 'buyers') buyerSyncStatus = status;
+        else saleSyncStatus = status;
       } else {
         const error = await response.json();
-        alert(`Failed to toggle FairEntry sync: ${error.detail}`);
+        alert(`Failed to toggle sync: ${error.detail}`);
       }
     } catch (error) {
-      alert('Failed to toggle FairEntry sync: ' + error.message);
+      alert('Failed to toggle sync: ' + error.message);
     }
   }
 
-  async function handleSyncFairEntryNow() {
+  async function handleSyncNow(target) {
     try {
-      const response = await makeAuthenticatedRequest(`${API_BASE}/api/fairentry/sync-now`, {
+      const response = await makeAuthenticatedRequest(`${API_BASE}/api/fairentry/sync/${target}/now`, {
         method: 'POST'
       });
       const result = await response.json();
-      await fetchFairEntrySettings();
-      await fetchBuyerData();
+      if (target === 'buyers') {
+        await fetchBuyerSyncStatus();
+        await fetchBuyerData();
+      } else {
+        await fetchSaleSyncStatus();
+        await fetchSaleData();
+        await fetchCurrentState();
+      }
       return result;
     } catch (error) {
       return { message: 'Sync failed: ' + error.message };
+    }
+  }
+
+  async function handleRefreshSaleOrders() {
+    try {
+      const response = await makeAuthenticatedRequest(`${API_BASE}/api/fairentry/sale-orders/refresh`, {
+        method: 'POST'
+      });
+      const result = await response.json();
+      if (response.ok) {
+        saleOrderOptions = Array.isArray(result.options) ? result.options : [];
+        await fetchSaleSyncStatus();
+      } else {
+        alert(`Failed to refresh sale orders: ${result.detail || result.message}`);
+      }
+    } catch (error) {
+      alert('Failed to refresh sale orders: ' + error.message);
+    }
+  }
+
+  async function handleSelectSaleOrder(saleOrderId) {
+    try {
+      const response = await makeAuthenticatedRequest(`${API_BASE}/api/fairentry/sale-orders/select`, {
+        method: 'POST',
+        body: JSON.stringify({ sale_order_id: saleOrderId })
+      });
+      if (response.ok) {
+        saleSyncStatus = await response.json();
+      } else {
+        const error = await response.json();
+        alert(`Failed to select sale order: ${error.detail}`);
+      }
+    } catch (error) {
+      alert('Failed to select sale order: ' + error.message);
     }
   }
 
@@ -328,20 +439,31 @@
       onMergeBidders={handleMergeBidders}
     />
   {:else if currentTab === 'sale'}
-    <SaleList {saleData} onFileUpload={handleFileUpload} />
+    <SaleList
+      {saleData}
+      onFileUpload={handleFileUpload}
+      {saleOrderOptions}
+      {saleSyncStatus}
+      onRefreshSaleOrders={handleRefreshSaleOrders}
+      onSelectSaleOrder={handleSelectSaleOrder}
+      onSaleSyncIntervalChange={(minutes) => handleSyncIntervalChange('sale', minutes)}
+      onToggleSaleSync={(enabled) => handleToggleSync('sale', enabled)}
+      onSyncSaleNow={() => handleSyncNow('sale')}
+    />
   {:else if currentTab === 'buyers'}
     <BuyerList
       {buyerData}
       onFileUpload={handleFileUpload}
-      {fairEntrySettings}
-      onSaveFairEntrySettings={handleSaveFairEntrySettings}
-      onToggleFairEntrySync={handleToggleFairEntrySync}
-      onSyncFairEntryNow={handleSyncFairEntryNow}
+      {buyerSyncStatus}
+      onBuyerSyncIntervalChange={(minutes) => handleSyncIntervalChange('buyers', minutes)}
+      onToggleBuyerSync={(enabled) => handleToggleSync('buyers', enabled)}
+      onSyncBuyersNow={() => handleSyncNow('buyers')}
     />
   {:else if currentTab === 'users'}
     <UserManagement />
   {:else if currentTab === 'preferences'}
     <ThemePicker currentTheme={theme} />
+    <FairEntryConnection settings={fairEntryConnection} onSaveSettings={handleSaveFairEntryConnection} />
   {:else if currentTab === 'logging'}
     <Logging {logMessages} />
   {/if}

@@ -71,6 +71,10 @@
             if (data.lot) lot = data.lot;
             if (Array.isArray(data.bidders)) bidders = data.bidders;
             if (data.theme) themeName = data.theme;
+            // A FairEntry sale sync (background auto-sync or a manual Sync
+            // Now) replaces lot data without a lot-navigation event, so it
+            // doesn't come with a `lot` field on this message - re-fetch.
+            if (data.type === 'sale_updated') fetchInitialState();
         };
 
         fetchInitialState();
