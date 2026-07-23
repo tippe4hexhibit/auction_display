@@ -3,6 +3,7 @@
   import AdminConsole from './components/AdminConsole.svelte';
   import AuctioneerDisplay from './components/AuctioneerDisplay.svelte';
   import PublicDisplay from './components/PublicDisplay.svelte';
+  import ReviewerDisplay from './components/ReviewerDisplay.svelte';
   import Login from './components/Login.svelte';
   import { isAuthenticated } from './utils/auth.js';
 
@@ -14,6 +15,8 @@
     switch(currentPath) {
       case '/admin':
         return authenticated ? AdminConsole : Login;
+      case '/reviewer':
+        return authenticated ? ReviewerDisplay : Login;
       case '/auctioneer':
         return AuctioneerDisplay;
       case '/public':
