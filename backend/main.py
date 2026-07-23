@@ -227,6 +227,34 @@ async def get_sale(db: Session = Depends(get_db)):
         for lot in lots
     ]
 
+@app.get("/api/review/lots")
+async def get_review_lots(db: Session = Depends(get_db), user: dict = Depends(require_auth)):
+    """Full sale program with every lot's recorded bidders, for the /reviewer
+    screen. Read-only and unrelated to AuctionSession.current_lot_index -
+    navigation on that screen is a purely local frontend index."""
+    lots = ordered_lots(db).all()
+    lot_ids = [lot.id for lot in lots]
+    rows = (
+        db.query(BidderLot, Buyer)
+        .join(Buyer, BidderLot.buyer_id == Buyer.id)
+        .filter(BidderLot.lot_id.in_(lot_ids))
+        .all()
+    )
+    bidders_by_lot = {}
+    for bidder_lot, buyer in rows:
+        bidders_by_lot.setdefault(bidder_lot.lot_id, []).append(
+            {"Identifier": buyer.identifier, "Name": buyer.name}
+        )
+    return [
+        {
+            "LotNumber": lot.lot_number,
+            "StudentName": lot.student_name,
+            "Department": lot.department,
+            "Bidders": bidders_by_lot.get(lot.id, []),
+        }
+        for lot in lots
+    ]
+
 @app.get("/api/buyers")
 async def get_buyers(db: Session = Depends(get_db)):
     buyers = db.query(Buyer).all()
