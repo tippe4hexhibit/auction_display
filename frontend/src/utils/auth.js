@@ -30,6 +30,14 @@ export async function makeAuthenticatedRequest(url, options = {}) {
     headers,
   });
 
+  // The backend silently reissues a fresh token once the current one is
+  // past the halfway point of its life, so an actively-used session never
+  // hits the hard expiry - only real idle time does.
+  const refreshedToken = response.headers.get('X-New-Token');
+  if (refreshedToken) {
+    localStorage.setItem('auth_token', refreshedToken);
+  }
+
   if (response.status === 401) {
     logout();
     throw new Error('Authentication required');

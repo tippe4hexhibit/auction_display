@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from typing import Optional
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Response, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import bcrypt as _bcrypt
 import jwt
@@ -11,6 +11,12 @@ import os
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
+# Once a valid token has less than half its life left, silently reissue a
+# fresh one on whatever authenticated request happens to come in. A user
+# actively working (admin console, auctioneer, reviewer) never hits the
+# hard expiry - only a genuinely idle session (no requests for a full
+# ACCESS_TOKEN_EXPIRE_HOURS) actually gets logged out.
+TOKEN_REFRESH_THRESHOLD = timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS / 2)
 
 security = HTTPBearer()
 
@@ -36,7 +42,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+def verify_token(response: Response, credentials: HTTPAuthorizationCredentials = Depends(security)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -48,6 +54,13 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
         username: str = payload.get("sub")
         if username is None:
             raise credentials_exception
+
+        exp = payload.get("exp")
+        if exp is not None:
+            remaining = datetime.utcfromtimestamp(exp) - datetime.utcnow()
+            if remaining < TOKEN_REFRESH_THRESHOLD:
+                response.headers["X-New-Token"] = create_access_token({"sub": username})
+
         return {"username": username}
     except InvalidTokenError:
         raise credentials_exception
