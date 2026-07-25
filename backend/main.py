@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from database import (
     init_database, get_db, get_or_create_session, ordered_lots, clamp_current_lot_index,
     get_active_sale_order_id, get_or_create_fairentry_connection, get_or_create_fairentry_sync_status,
+    count_recorded_bids_for_active_sale_order,
     SaleProgram, Buyer, BidderLot, AuctionSession, User, FairEntrySaleOrderOption,
     ALLOWED_THEMES
 )
@@ -289,12 +290,16 @@ async def get_fairentry_sync_status(target: str, db: Session = Depends(get_db), 
     if target not in VALID_SYNC_TARGETS:
         raise HTTPException(status_code=404, detail=f"Unknown sync target '{target}'")
     status = get_or_create_fairentry_sync_status(db, target)
+    if target == "sale":
+        return {**status_to_dict(status), "recorded_bid_count": count_recorded_bids_for_active_sale_order(db)}
     return status_to_dict(status)
 
 @app.post("/api/fairentry/sync/{target}/interval")
 async def update_fairentry_sync_interval(target: str, request: FairEntrySyncIntervalRequest, db: Session = Depends(get_db), user: dict = Depends(require_auth)):
     if target not in VALID_SYNC_TARGETS:
         raise HTTPException(status_code=404, detail=f"Unknown sync target '{target}'")
+    if target == "sale":
+        raise HTTPException(status_code=400, detail="Auto-sync isn't available for the Sale Order — sync manually instead.")
     status = get_or_create_fairentry_sync_status(db, target)
     status.sync_interval_minutes = request.sync_interval_minutes
     db.commit()
@@ -306,6 +311,8 @@ async def update_fairentry_sync_interval(target: str, request: FairEntrySyncInte
 async def toggle_fairentry_sync(target: str, request: FairEntrySyncToggleRequest, db: Session = Depends(get_db), user: dict = Depends(require_auth)):
     if target not in VALID_SYNC_TARGETS:
         raise HTTPException(status_code=404, detail=f"Unknown sync target '{target}'")
+    if target == "sale":
+        raise HTTPException(status_code=400, detail="Auto-sync isn't available for the Sale Order — sync manually instead.")
     status = get_or_create_fairentry_sync_status(db, target)
     status.sync_enabled = request.enabled
     if request.enabled:

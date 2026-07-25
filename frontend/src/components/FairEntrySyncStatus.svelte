@@ -1,14 +1,22 @@
 <script>
+  import ConfirmDialog from './ConfirmDialog.svelte';
+
   export let label = 'FairEntry Auto-Sync';
   export let status = {};
   export let onIntervalChange;
   export let onToggle;
   export let onSyncNow;
+  export let showAutoSync = true;
+  export let blocked = false;
+  export let blockedMessage = '';
+  export let confirmSyncNow = false;
+  export let confirmMessage = '';
 
   let syncIntervalMinutes = 15;
   let toggling = false;
   let syncing = false;
   let syncNowMessage = '';
+  let showConfirm = false;
 
   let initialized = false;
   $: if (!initialized && status && status.sync_interval_minutes !== undefined) {
@@ -29,7 +37,7 @@
     }
   }
 
-  async function syncNow() {
+  async function runSyncNow() {
     syncing = true;
     syncNowMessage = '';
     try {
@@ -38,6 +46,19 @@
     } finally {
       syncing = false;
     }
+  }
+
+  function syncNow() {
+    if (confirmSyncNow) {
+      showConfirm = true;
+    } else {
+      runSyncNow();
+    }
+  }
+
+  function confirmSyncNowClicked() {
+    showConfirm = false;
+    runSyncNow();
   }
 
   function formatTimestamp(iso) {
@@ -65,40 +86,49 @@
   .status-success { color: #28a745; }
   .status-error { color: #dc3545; }
   .sync-now-msg { margin-top: 0.5rem; font-style: italic; }
+  .blocked-msg { margin-top: 0.5rem; color: #856404; background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px; padding: 0.6rem 0.75rem; }
 </style>
 
 <div class="section">
   <h3>{label}</h3>
 
-  <div class="form-group">
-    <label for="fe-interval">Sync Interval (minutes)</label>
-    <input id="fe-interval" type="number" min="1" bind:value={syncIntervalMinutes} on:change={saveInterval} />
-  </div>
+  {#if showAutoSync}
+    <div class="form-group">
+      <label for="fe-interval">Sync Interval (minutes)</label>
+      <input id="fe-interval" type="number" min="1" bind:value={syncIntervalMinutes} on:change={saveInterval} />
+    </div>
 
-  <button
-    class="btn"
-    class:btn-toggle-on={!status.sync_enabled}
-    class:btn-toggle-off={status.sync_enabled}
-    on:click={toggleSync}
-    disabled={toggling}
-  >
-    {status.sync_enabled ? 'Disable Auto-Sync' : 'Enable Auto-Sync'}
-  </button>
-  <button class="btn" on:click={syncNow} disabled={syncing}>
+    <button
+      class="btn"
+      class:btn-toggle-on={!status.sync_enabled}
+      class:btn-toggle-off={status.sync_enabled}
+      on:click={toggleSync}
+      disabled={toggling}
+    >
+      {status.sync_enabled ? 'Disable Auto-Sync' : 'Enable Auto-Sync'}
+    </button>
+  {/if}
+  <button class="btn" on:click={syncNow} disabled={syncing || blocked}>
     {syncing ? 'Syncing...' : 'Sync Now'}
   </button>
+
+  {#if blocked}
+    <p class="blocked-msg">{blockedMessage}</p>
+  {/if}
 
   {#if syncNowMessage}
     <p class="sync-now-msg">{syncNowMessage}</p>
   {/if}
 
   <div class="status">
-    <div class="status-row">
-      <span>Auto-Sync:</span>
-      <span class="badge" class:badge-on={status.sync_enabled} class:badge-off={!status.sync_enabled}>
-        {status.sync_enabled ? 'ON' : 'OFF'}
-      </span>
-    </div>
+    {#if showAutoSync}
+      <div class="status-row">
+        <span>Auto-Sync:</span>
+        <span class="badge" class:badge-on={status.sync_enabled} class:badge-off={!status.sync_enabled}>
+          {status.sync_enabled ? 'ON' : 'OFF'}
+        </span>
+      </div>
+    {/if}
     <div class="status-row">
       <span>Last Sync:</span>
       <span>{formatTimestamp(status.last_sync_at)}</span>
@@ -123,3 +153,12 @@
     {/if}
   </div>
 </div>
+
+<ConfirmDialog
+  open={showConfirm}
+  title="Confirm Sale Sync"
+  message={confirmMessage}
+  confirmLabel="Sync Now"
+  onConfirm={confirmSyncNowClicked}
+  onCancel={() => showConfirm = false}
+/>

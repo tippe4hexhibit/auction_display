@@ -13,7 +13,7 @@ from database import (
     FairEntryConnection, FairEntrySyncStatus, FairEntrySaleOrderOption,
     SessionLocal, clamp_current_lot_index,
     get_or_create_fairentry_connection, get_or_create_fairentry_sync_status,
-    get_or_create_session,
+    get_or_create_session, count_recorded_bids_for_active_sale_order,
 )
 from ws_manager import broadcast_message
 
@@ -197,8 +197,23 @@ async def perform_sale_sync(db) -> dict:
 
 
 async def _perform_sale_sync_locked(db) -> dict:
-    connection = get_or_create_fairentry_connection(db)
     status = get_or_create_fairentry_sync_status(db, "sale")
+
+    # This sync is a full replace, not an upsert (see perform_sale_sync's
+    # docstring) - cascades to delete every recorded buyer/bid for lots in
+    # this Sale Order. Block it here, before even authenticating, so it
+    # applies no matter which of the three trigger paths (Sync Now, the
+    # toggle-on auto-fire, or an auto-sync tick) is calling in.
+    bid_count = count_recorded_bids_for_active_sale_order(db)
+    if bid_count > 0:
+        result = {
+            "status": "blocked",
+            "message": f"Re-sync blocked: {bid_count} buyer(s) already recorded against lots in this Sale Order. Re-syncing would permanently delete that data.",
+        }
+        await _broadcast_status(status, result)
+        return result
+
+    connection = get_or_create_fairentry_connection(db)
 
     try:
         client = await _authenticate(connection)
@@ -373,14 +388,15 @@ async def _maybe_run_due_sync(db, target: str, perform_fn):
 
 
 async def fairentry_sync_loop():
-    """Background task: periodically checks whether either sync target
-    (buyers or sale) is due for an auto-sync."""
+    """Background task: periodically checks whether the buyers sync target
+    is due for an auto-sync. Sale sync is manual-only (see
+    _perform_sale_sync_locked) - it's a destructive full-replace, so an
+    unattended timer is never allowed to trigger it."""
     while True:
         await asyncio.sleep(SYNC_CHECK_TICK_SECONDS)
         db = SessionLocal()
         try:
             await _maybe_run_due_sync(db, "buyers", perform_buyer_sync)
-            await _maybe_run_due_sync(db, "sale", perform_sale_sync)
         except Exception:
             logger.exception("Unexpected error in FairEntry sync loop")
         finally:

@@ -467,8 +467,6 @@
       {saleSyncStatus}
       onRefreshSaleOrders={handleRefreshSaleOrders}
       onSelectSaleOrder={handleSelectSaleOrder}
-      onSaleSyncIntervalChange={(minutes) => handleSyncIntervalChange('sale', minutes)}
-      onToggleSaleSync={(enabled) => handleToggleSync('sale', enabled)}
       onSyncSaleNow={() => handleSyncNow('sale')}
     />
   {:else if currentTab === 'buyers'}

@@ -8,8 +8,6 @@
   export let saleSyncStatus = {};
   export let onRefreshSaleOrders;
   export let onSelectSaleOrder;
-  export let onSaleSyncIntervalChange;
-  export let onToggleSaleSync;
   export let onSyncSaleNow;
 </script>
 
@@ -31,11 +29,14 @@
 />
 
 <FairEntrySyncStatus
-  label="FairEntry Sale Auto-Sync"
+  label="FairEntry Sale Sync"
   status={saleSyncStatus}
-  onIntervalChange={onSaleSyncIntervalChange}
-  onToggle={onToggleSaleSync}
   onSyncNow={onSyncSaleNow}
+  showAutoSync={false}
+  blocked={saleSyncStatus.recorded_bid_count > 0}
+  blockedMessage={`${saleSyncStatus.recorded_bid_count} buyer(s) are already recorded against this Sale Order — re-syncing would permanently delete that data, so it's blocked.`}
+  confirmSyncNow={true}
+  confirmMessage="This will reload the Sale List from FairEntry, completely replacing every lot in the currently selected Sale Order. Continue?"
 />
 
 <div class="section">
