@@ -11,6 +11,7 @@
     let ws;
     let jumpLotNumber = '';
     let jumpError = '';
+    let followLive = false;
 
     $: currentLot = lots[currentIndex] || null;
     $: if (jumpLotNumber) jumpError = '';
@@ -33,10 +34,12 @@
     }
 
     function prevLot() {
+        followLive = false;
         if (currentIndex > 0) currentIndex -= 1;
     }
 
     function nextLot() {
+        followLive = false;
         if (currentIndex < lots.length - 1) currentIndex += 1;
     }
 
@@ -49,6 +52,7 @@
             jumpError = `Lot ${target} not found.`;
             return;
         }
+        followLive = false;
         currentIndex = index;
         jumpError = '';
         jumpLotNumber = '';
@@ -58,14 +62,39 @@
         if (e.key === 'Enter') jumpToLot();
     }
 
+    function applyLiveLot(lot) {
+        if (!lot) return;
+        const index = lots.findIndex((l) => String(l.LotNumber).trim() === String(lot.LotNumber).trim());
+        if (index !== -1) currentIndex = index;
+    }
+
+    async function syncToLiveLot() {
+        try {
+            const res = await makeAuthenticatedRequest(`${API_BASE}/api/state`);
+            if (res.ok) {
+                const data = await res.json();
+                applyLiveLot(data.lot);
+            }
+        } catch (err) {
+            // Ignore - the next websocket update will retry.
+        }
+    }
+
+    function handleFollowLiveChange() {
+        if (followLive) syncToLiveLot();
+    }
+
     onMount(() => {
         fetchLots();
 
         ws = new WebSocket(API_BASE.replace('http', 'ws') + '/ws');
-        ws.onmessage = (event) => {
+        ws.onmessage = async (event) => {
             const data = JSON.parse(event.data);
             if (data.type === 'bid_update' || data.type === 'state' || data.type === 'sale_updated') {
-                fetchLots();
+                await fetchLots();
+            }
+            if (followLive && (data.type === 'bid_update' || data.type === 'state')) {
+                applyLiveLot(data.lot);
             }
         };
     });
@@ -197,6 +226,13 @@
         background-color: white;
         display: flex;
         align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+    }
+
+    .jump-controls {
+        display: flex;
+        align-items: center;
         gap: 0.75rem;
     }
 
@@ -216,6 +252,22 @@
     .jump-error {
         color: #dc3545;
         font-size: 0.95rem;
+    }
+
+    .follow-live-toggle {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 1.1rem;
+        font-weight: bold;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+
+    .follow-live-toggle input {
+        width: 1.2rem;
+        height: 1.2rem;
+        cursor: pointer;
     }
 </style>
 
@@ -258,17 +310,23 @@
     </div>
 
     <div class="jump-section">
-        <label for="jump-lot-number">Jump to Lot #:</label>
-        <input
-            id="jump-lot-number"
-            type="text"
-            bind:value={jumpLotNumber}
-            on:keypress={handleJumpKeyPress}
-            placeholder="Lot number"
-        />
-        <button class="nav-button" on:click={jumpToLot}>Go</button>
-        {#if jumpError}
-            <span class="jump-error">{jumpError}</span>
-        {/if}
+        <div class="jump-controls">
+            <label for="jump-lot-number">Jump to Lot #:</label>
+            <input
+                id="jump-lot-number"
+                type="text"
+                bind:value={jumpLotNumber}
+                on:keypress={handleJumpKeyPress}
+                placeholder="Lot number"
+            />
+            <button class="nav-button" on:click={jumpToLot}>Go</button>
+            {#if jumpError}
+                <span class="jump-error">{jumpError}</span>
+            {/if}
+        </div>
+        <label class="follow-live-toggle">
+            <input type="checkbox" bind:checked={followLive} on:change={handleFollowLiveChange} />
+            Follow the auction display live
+        </label>
     </div>
 </div>
