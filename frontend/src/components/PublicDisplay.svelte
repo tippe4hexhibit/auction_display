@@ -1,6 +1,7 @@
 <script>
     import { onMount, tick } from 'svelte';
     import { THEMES, DEFAULT_THEME } from '../themes.js';
+    import { renderMarkdown } from '../utils/markdown.js';
     let lot = {};
     let bidders = [];
     let leftColumnBidders = [];
@@ -10,6 +11,8 @@
     let viewportEl;
     let innerEl;
     let themeName = DEFAULT_THEME;
+    let displayMode = 'lot';
+    let message = '';
 
     const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
     // Pixels per second for the scroll; increase to scroll faster
@@ -59,6 +62,8 @@
                 bidders = (stateData.bidders || []).filter(b => !b.Scratched);
             }
             if (stateData.theme) themeName = stateData.theme;
+            if (stateData.display_mode) displayMode = stateData.display_mode;
+            if (stateData.message !== undefined) message = stateData.message;
         } catch (error) {
             console.error('Failed to fetch initial state:', error);
         }
@@ -71,6 +76,8 @@
             if (data.lot) lot = data.lot;
             if (Array.isArray(data.bidders)) bidders = data.bidders.filter(b => !b.Scratched);
             if (data.theme) themeName = data.theme;
+            if (data.display_mode) displayMode = data.display_mode;
+            if (data.message !== undefined) message = data.message;
             // A FairEntry sale sync (background auto-sync or a manual Sync
             // Now) replaces lot data without a lot-navigation event, so it
             // doesn't come with a `lot` field on this message - re-fetch.
@@ -184,6 +191,43 @@
         background-color: var(--table-header-bg, #f0f0f0);
         font-weight: bold;
     }
+
+    .message-overlay {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+    }
+
+    .message-content {
+        max-width: 80%;
+        font-size: 2.5rem;
+        line-height: 1.4;
+        overflow-wrap: break-word;
+    }
+
+    .message-content :global(h1),
+    .message-content :global(h2),
+    .message-content :global(h3) {
+        margin: 0.5em 0;
+    }
+
+    .message-content :global(ul),
+    .message-content :global(ol) {
+        display: inline-block;
+        text-align: left;
+        margin: 0.5em 0;
+    }
+
+    .message-content :global(p) {
+        margin: 0.5em 0;
+    }
+
+    .message-content :global(a) {
+        color: inherit;
+    }
 </style>
 
 <div
@@ -202,6 +246,11 @@
         Tippecanoe County 4-H Livestock Auction
     </div>
 
+    {#if displayMode === 'message'}
+        <div class="message-overlay">
+            <div class="message-content">{@html renderMarkdown(message)}</div>
+        </div>
+    {:else}
     <div class="content">
         <div class="bidders-section">
             {#if bidders.length > 0}
@@ -274,4 +323,5 @@
             </table>
         </div>
     </div>
+    {/if}
 </div>

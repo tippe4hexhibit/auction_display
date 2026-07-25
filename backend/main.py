@@ -20,7 +20,7 @@ from database import (
     init_database, get_db, get_or_create_session, ordered_lots, clamp_current_lot_index,
     get_active_sale_order_id, get_or_create_fairentry_connection, get_or_create_fairentry_sync_status,
     SaleProgram, Buyer, BidderLot, AuctionSession, User, FairEntrySaleOrderOption,
-    ALLOWED_THEMES
+    ALLOWED_THEMES, ALLOWED_DISPLAY_MODES
 )
 from auth import authenticate_user, create_access_token, require_auth, create_user, change_user_password, get_all_users, delete_user
 from fairentry_sync import (
@@ -40,6 +40,12 @@ class LoginResponse(BaseModel):
 
 class ThemeRequest(BaseModel):
     theme: str
+
+class DisplayModeRequest(BaseModel):
+    display_mode: str
+
+class MessageRequest(BaseModel):
+    message: str
 
 class FairEntryConnectionRequest(BaseModel):
     username: str
@@ -356,7 +362,7 @@ async def get_current_state(db: Session = Depends(get_db)):
 
     current_lot = ordered_lots(db).offset(session.current_lot_index).first()
     if not current_lot:
-        return {"lot": None, "bidders": [], "theme": session.theme}
+        return {"lot": None, "bidders": [], "theme": session.theme, "display_mode": session.display_mode, "message": session.message_text}
 
     lot_info = {
         "LotNumber": current_lot.lot_number,
@@ -371,7 +377,7 @@ async def get_current_state(db: Session = Depends(get_db)):
         if buyer:
             bidder_info.append({"Id": bidder.id, "Identifier": buyer.identifier, "Name": buyer.name, "Scratched": bidder.scratched})
 
-    return {"lot": lot_info, "bidders": bidder_info, "theme": session.theme}
+    return {"lot": lot_info, "bidders": bidder_info, "theme": session.theme, "display_mode": session.display_mode, "message": session.message_text}
 
 @app.post("/api/theme")
 async def set_theme(request: ThemeRequest, db: Session = Depends(get_db), user: dict = Depends(require_auth)):
@@ -384,6 +390,27 @@ async def set_theme(request: ThemeRequest, db: Session = Depends(get_db), user: 
 
     await broadcast_state(db)
     return {"message": "Theme updated", "theme": request.theme}
+
+@app.post("/api/display-mode")
+async def set_display_mode(request: DisplayModeRequest, db: Session = Depends(get_db), user: dict = Depends(require_auth)):
+    if request.display_mode not in ALLOWED_DISPLAY_MODES:
+        raise HTTPException(status_code=400, detail=f"Unknown display mode '{request.display_mode}'")
+
+    session = get_or_create_session(db)
+    session.display_mode = request.display_mode
+    db.commit()
+
+    await broadcast_state(db)
+    return {"message": "Display mode updated", "display_mode": request.display_mode}
+
+@app.post("/api/message")
+async def set_message(request: MessageRequest, db: Session = Depends(get_db), user: dict = Depends(require_auth)):
+    session = get_or_create_session(db)
+    session.message_text = request.message
+    db.commit()
+
+    await broadcast_state(db)
+    return {"message": "Message updated"}
 
 @app.post("/api/lot/next")
 async def next_lot(db: Session = Depends(get_db), user: dict = Depends(require_auth)):
@@ -644,7 +671,10 @@ async def broadcast_state(db: Session, bid_update=False):
                 bidder_info.append({"Id": bidder.id, "Identifier": buyer.identifier, "Name": buyer.name, "Scratched": bidder.scratched})
 
     message_type = "bid_update" if bid_update else "state"
-    state = {"type": message_type, "lot": lot_info, "bidders": bidder_info, "theme": session.theme}
+    state = {
+        "type": message_type, "lot": lot_info, "bidders": bidder_info, "theme": session.theme,
+        "display_mode": session.display_mode, "message": session.message_text,
+    }
     await broadcast_message(state)
 
 @app.get("/{full_path:path}")

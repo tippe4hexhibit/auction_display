@@ -11,6 +11,11 @@ logger = logging.getLogger("adbackend")
 ALLOWED_THEMES = {"classic", "fourh_green", "fourh_green_solid", "high_contrast"}
 DEFAULT_THEME = "classic"
 
+# "lot" is the normal live lot/buyer display; "message" is the blank-screen
+# announcement overlay (pre-auction / thank-you message) for /public.
+ALLOWED_DISPLAY_MODES = {"lot", "message"}
+DEFAULT_DISPLAY_MODE = "lot"
+
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/auction.db")
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -57,6 +62,8 @@ class AuctionSession(Base):
     id = Column(Integer, primary_key=True, index=True)
     current_lot_index = Column(Integer, default=-1)
     theme = Column(String, default=DEFAULT_THEME)
+    display_mode = Column(String, default=DEFAULT_DISPLAY_MODE)
+    message_text = Column(Text, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     is_active = Column(Boolean, default=True)
@@ -139,6 +146,7 @@ def init_database():
     os.makedirs("data", exist_ok=True)
     Base.metadata.create_all(bind=engine)
     _ensure_theme_column()
+    _ensure_display_mode_columns()
     _ensure_sale_program_columns()
     _ensure_bidder_lot_columns()
     _ensure_default_admin()
@@ -169,6 +177,18 @@ def _ensure_theme_column():
         if "theme" not in columns:
             conn.execute(text(f"ALTER TABLE auction_sessions ADD COLUMN theme VARCHAR DEFAULT '{DEFAULT_THEME}'"))
             conn.commit()
+
+def _ensure_display_mode_columns():
+    """create_all() only creates missing tables, not missing columns on
+    existing ones, so add display_mode/message_text by hand for databases
+    created before they existed."""
+    with engine.connect() as conn:
+        columns = [row[1] for row in conn.execute(text("PRAGMA table_info(auction_sessions)"))]
+        if "display_mode" not in columns:
+            conn.execute(text(f"ALTER TABLE auction_sessions ADD COLUMN display_mode VARCHAR DEFAULT '{DEFAULT_DISPLAY_MODE}'"))
+        if "message_text" not in columns:
+            conn.execute(text("ALTER TABLE auction_sessions ADD COLUMN message_text TEXT DEFAULT ''"))
+        conn.commit()
 
 def _ensure_sale_program_columns():
     """create_all() only creates missing tables, not missing columns on
