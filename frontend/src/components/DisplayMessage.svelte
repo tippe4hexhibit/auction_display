@@ -3,16 +3,16 @@
     import { makeAuthenticatedRequest } from '../utils/auth.js';
 
     export let displayMode = 'lot';
-    export let message = '';
+    export let displayMessage = '';
 
     const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
-    let draftMessage = message;
+    let draftMessage = displayMessage;
     let saving = false;
 
     async function saveMessage() {
         const response = await makeAuthenticatedRequest(`${API_BASE}/api/message`, {
             method: 'POST',
-            body: JSON.stringify({ message: draftMessage })
+            body: JSON.stringify({ display_message: draftMessage })
         });
         if (!response.ok) {
             const error = await response.json();

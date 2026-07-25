@@ -46,7 +46,7 @@ class DisplayModeRequest(BaseModel):
     display_mode: str
 
 class MessageRequest(BaseModel):
-    message: str
+    display_message: str
 
 class FairEntryConnectionRequest(BaseModel):
     username: str
@@ -369,7 +369,7 @@ async def get_current_state(db: Session = Depends(get_db)):
 
     current_lot = ordered_lots(db).offset(session.current_lot_index).first()
     if not current_lot:
-        return {"lot": None, "bidders": [], "theme": session.theme, "display_mode": session.display_mode, "message": session.message_text}
+        return {"lot": None, "bidders": [], "theme": session.theme, "display_mode": session.display_mode, "display_message": session.message_text}
 
     lot_info = {
         "LotNumber": current_lot.lot_number,
@@ -384,7 +384,7 @@ async def get_current_state(db: Session = Depends(get_db)):
         if buyer:
             bidder_info.append({"Id": bidder.id, "Identifier": buyer.identifier, "Name": buyer.name, "Scratched": bidder.scratched})
 
-    return {"lot": lot_info, "bidders": bidder_info, "theme": session.theme, "display_mode": session.display_mode, "message": session.message_text}
+    return {"lot": lot_info, "bidders": bidder_info, "theme": session.theme, "display_mode": session.display_mode, "display_message": session.message_text}
 
 @app.post("/api/theme")
 async def set_theme(request: ThemeRequest, db: Session = Depends(get_db), user: dict = Depends(require_auth)):
@@ -413,7 +413,7 @@ async def set_display_mode(request: DisplayModeRequest, db: Session = Depends(ge
 @app.post("/api/message")
 async def set_message(request: MessageRequest, db: Session = Depends(get_db), user: dict = Depends(require_auth)):
     session = get_or_create_session(db)
-    session.message_text = request.message
+    session.message_text = request.display_message
     db.commit()
 
     await broadcast_state(db)
@@ -680,7 +680,7 @@ async def broadcast_state(db: Session, bid_update=False):
     message_type = "bid_update" if bid_update else "state"
     state = {
         "type": message_type, "lot": lot_info, "bidders": bidder_info, "theme": session.theme,
-        "display_mode": session.display_mode, "message": session.message_text,
+        "display_mode": session.display_mode, "display_message": session.message_text,
     }
     await broadcast_message(state)
 

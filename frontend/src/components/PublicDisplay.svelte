@@ -12,7 +12,7 @@
     let innerEl;
     let themeName = DEFAULT_THEME;
     let displayMode = 'lot';
-    let message = '';
+    let displayMessage = '';
 
     const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
     // Pixels per second for the scroll; increase to scroll faster
@@ -63,7 +63,7 @@
             }
             if (stateData.theme) themeName = stateData.theme;
             if (stateData.display_mode) displayMode = stateData.display_mode;
-            if (stateData.message !== undefined) message = stateData.message;
+            if (stateData.display_message !== undefined) displayMessage = stateData.display_message;
         } catch (error) {
             console.error('Failed to fetch initial state:', error);
         }
@@ -77,7 +77,7 @@
             if (Array.isArray(data.bidders)) bidders = data.bidders.filter(b => !b.Scratched);
             if (data.theme) themeName = data.theme;
             if (data.display_mode) displayMode = data.display_mode;
-            if (data.message !== undefined) message = data.message;
+            if (data.display_message !== undefined) displayMessage = data.display_message;
             // A FairEntry sale sync (background auto-sync or a manual Sync
             // Now) replaces lot data without a lot-navigation event, so it
             // doesn't come with a `lot` field on this message - re-fetch.
@@ -248,7 +248,7 @@
 
     {#if displayMode === 'message'}
         <div class="message-overlay">
-            <div class="message-content">{@html renderMarkdown(message)}</div>
+            <div class="message-content">{@html renderMarkdown(displayMessage)}</div>
         </div>
     {:else}
     <div class="content">

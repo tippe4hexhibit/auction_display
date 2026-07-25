@@ -21,7 +21,7 @@
   let currentTab = 'main';
   let theme = DEFAULT_THEME;
   let displayMode = 'lot';
-  let message = '';
+  let displayMessage = '';
   let fairEntryConnection = {};
   let buyerSyncStatus = {};
   let saleSyncStatus = {};
@@ -108,7 +108,7 @@
       }
       if (stateData.theme) theme = stateData.theme;
       if (stateData.display_mode) displayMode = stateData.display_mode;
-      if (stateData.message !== undefined) message = stateData.message;
+      if (stateData.display_message !== undefined) displayMessage = stateData.display_message;
     } catch (error) {
       console.error('Failed to fetch current state:', error);
     }
@@ -167,7 +167,7 @@
       }
       if (data.theme) theme = data.theme;
       if (data.display_mode) displayMode = data.display_mode;
-      if (data.message !== undefined) message = data.message;
+      if (data.display_message !== undefined) displayMessage = data.display_message;
 
       if (data.type === 'fairentry_buyers_sync_status') {
         const { type, ...rest } = data;
@@ -487,7 +487,7 @@
       onSyncBuyersNow={() => handleSyncNow('buyers')}
     />
   {:else if currentTab === 'message'}
-    <DisplayMessage {displayMode} {message} />
+    <DisplayMessage {displayMode} {displayMessage} />
   {:else if currentTab === 'users'}
     <UserManagement />
   {:else if currentTab === 'preferences'}
