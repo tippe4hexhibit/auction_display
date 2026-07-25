@@ -52,7 +52,7 @@
             const stateData = await stateRes.json();
             if (stateData.lot) {
                 lot = stateData.lot;
-                bidders = stateData.bidders || [];
+                bidders = (stateData.bidders || []).filter(b => !b.Scratched);
                 currentBidder = bidders[bidders.length - 1] || null;
             }
         } catch (error) {
@@ -66,7 +66,7 @@
             const data = JSON.parse(event.data);
             if (data.lot) lot = data.lot;
             if (Array.isArray(data.bidders)) {
-                bidders = data.bidders;
+                bidders = data.bidders.filter(b => !b.Scratched);
                 currentBidder = bidders[bidders.length - 1] || null;
             }
             // A FairEntry sale sync (background auto-sync or a manual Sync
