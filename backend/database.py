@@ -214,6 +214,16 @@ def ordered_lots(db):
         .order_by(SaleProgram.sort_order, SaleProgram.id)
     )
 
+def count_recorded_bids_for_active_sale_order(db):
+    """How many BidderLot rows exist against lots in the currently-selected
+    Sale Order - used to block a destructive re-sync once an auction has
+    started recording buyers against it."""
+    active_sale_order_id = get_active_sale_order_id(db)
+    lot_ids = [row.id for row in db.query(SaleProgram.id).filter(SaleProgram.sale_order_id == active_sale_order_id).all()]
+    if not lot_ids:
+        return 0
+    return db.query(BidderLot).filter(BidderLot.lot_id.in_(lot_ids)).count()
+
 def get_or_create_session(db):
     """Get or create the current auction session"""
     session = db.query(AuctionSession).filter(AuctionSession.is_active == True).first()
