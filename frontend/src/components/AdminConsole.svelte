@@ -7,6 +7,7 @@
   import Logging from './Logging.svelte';
   import ThemePicker from './ThemePicker.svelte';
   import FairEntryConnection from './FairEntryConnection.svelte';
+  import DisplayMessage from './DisplayMessage.svelte';
   import { makeAuthenticatedRequest } from '../utils/auth.js';
   import { DEFAULT_THEME } from '../themes.js';
 
@@ -19,6 +20,8 @@
   let logMessages = [];
   let currentTab = 'main';
   let theme = DEFAULT_THEME;
+  let displayMode = 'lot';
+  let message = '';
   let fairEntryConnection = {};
   let buyerSyncStatus = {};
   let saleSyncStatus = {};
@@ -104,6 +107,8 @@
         }
       }
       if (stateData.theme) theme = stateData.theme;
+      if (stateData.display_mode) displayMode = stateData.display_mode;
+      if (stateData.message !== undefined) message = stateData.message;
     } catch (error) {
       console.error('Failed to fetch current state:', error);
     }
@@ -161,6 +166,8 @@
         }
       }
       if (data.theme) theme = data.theme;
+      if (data.display_mode) displayMode = data.display_mode;
+      if (data.message !== undefined) message = data.message;
 
       if (data.type === 'fairentry_buyers_sync_status') {
         const { type, ...rest } = data;
@@ -442,6 +449,7 @@
     <button class:active={currentTab === 'main'} on:click={() => currentTab = 'main'}>Main Control</button>
     <button class:active={currentTab === 'sale'} on:click={() => currentTab = 'sale'}>Sale List</button>
     <button class:active={currentTab === 'buyers'} on:click={() => currentTab = 'buyers'}>Buyer List</button>
+    <button class:active={currentTab === 'message'} on:click={() => currentTab = 'message'}>Display Message</button>
     <button class:active={currentTab === 'users'} on:click={() => currentTab = 'users'}>User Management</button>
     <button class:active={currentTab === 'preferences'} on:click={() => currentTab = 'preferences'}>Preferences</button>
     <button class:active={currentTab === 'logging'} on:click={() => currentTab = 'logging'}>Logging</button>
@@ -478,6 +486,8 @@
       onToggleBuyerSync={(enabled) => handleToggleSync('buyers', enabled)}
       onSyncBuyersNow={() => handleSyncNow('buyers')}
     />
+  {:else if currentTab === 'message'}
+    <DisplayMessage {displayMode} {message} />
   {:else if currentTab === 'users'}
     <UserManagement />
   {:else if currentTab === 'preferences'}
