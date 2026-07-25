@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime
 from pathlib import Path
 import logging.config
 import numpy as np
@@ -243,7 +244,7 @@ async def get_review_lots(db: Session = Depends(get_db), user: dict = Depends(re
     bidders_by_lot = {}
     for bidder_lot, buyer in rows:
         bidders_by_lot.setdefault(bidder_lot.lot_id, []).append(
-            {"Identifier": buyer.identifier, "Name": buyer.name}
+            {"Id": bidder_lot.id, "Identifier": buyer.identifier, "Name": buyer.name, "Scratched": bidder_lot.scratched}
         )
     return [
         {
@@ -368,7 +369,7 @@ async def get_current_state(db: Session = Depends(get_db)):
     for bidder in bidders:
         buyer = db.query(Buyer).filter(Buyer.id == bidder.buyer_id).first()
         if buyer:
-            bidder_info.append({"Identifier": buyer.identifier, "Name": buyer.name})
+            bidder_info.append({"Id": bidder.id, "Identifier": buyer.identifier, "Name": buyer.name, "Scratched": bidder.scratched})
 
     return {"lot": lot_info, "bidders": bidder_info, "theme": session.theme}
 
@@ -426,10 +427,14 @@ async def add_bidder(identifier: int, db: Session = Depends(get_db), user: dict 
     
     existing_bid = db.query(BidderLot).filter(
         BidderLot.lot_id == current_lot.id,
-        BidderLot.buyer_id == buyer.id
+        BidderLot.buyer_id == buyer.id,
+        BidderLot.scratched == False
     ).first()
-    
+
     if not existing_bid:
+        # If this buyer was previously scratched from this lot, that row is
+        # left alone as history - a re-add creates a fresh active row rather
+        # than reviving the old one, so the scratch/re-add is auditable.
         bid = BidderLot(
             lot_id=current_lot.id,
             buyer_id=buyer.id,
@@ -437,11 +442,11 @@ async def add_bidder(identifier: int, db: Session = Depends(get_db), user: dict 
         )
         db.add(bid)
         db.commit()
-        
+
         await broadcast_state(db, bid_update=True)
-        await broadcast_message({"type": "log", "message": f"Bidder {identifier} added."})
-    
-    return {"message": "Bidder added"}
+        await broadcast_message({"type": "log", "message": f"Buyer {identifier} added."})
+
+    return {"message": "Buyer added"}
 
 @app.get("/api/export/bidders")
 async def export_bidders(db: Session = Depends(get_db), user: dict = Depends(require_auth)):
@@ -474,7 +479,9 @@ async def export_bidders(db: Session = Depends(get_db), user: dict = Depends(req
 
 @app.post("/api/bidder/undo")
 async def undo_bidder(db: Session = Depends(get_db), user: dict = Depends(require_auth)):
-    """Remove the last bidder from the current lot."""
+    """Scratch (soft-delete) the most recently added active bidder for the
+    current lot. Filtering out already-scratched rows means repeated calls
+    (e.g. repeated Ctrl+Z) walk backward through the last few adds in order."""
     session = get_or_create_session(db)
 
     current_lot = ordered_lots(db).offset(session.current_lot_index).first()
@@ -482,22 +489,47 @@ async def undo_bidder(db: Session = Depends(get_db), user: dict = Depends(requir
         raise HTTPException(status_code=404, detail="No current lot")
 
     last_bidder = db.query(BidderLot).filter(
-        BidderLot.lot_id == current_lot.id
+        BidderLot.lot_id == current_lot.id,
+        BidderLot.scratched == False
     ).order_by(BidderLot.created_at.desc()).first()
-    
+
     if not last_bidder:
         raise HTTPException(status_code=404, detail="No bidders to undo for this lot")
-    
+
     buyer = db.query(Buyer).filter(Buyer.id == last_bidder.buyer_id).first()
     buyer_identifier = buyer.identifier if buyer else "Unknown"
-    
-    db.delete(last_bidder)
+
+    last_bidder.scratched = True
+    last_bidder.scratched_at = datetime.utcnow()
     db.commit()
-    
+
     await broadcast_state(db)
-    await broadcast_message({"type": "log", "message": f"Undid bidder {buyer_identifier} from lot {current_lot.lot_number}"})
-    
-    return {"message": f"Undid bidder {buyer_identifier}"}
+    await broadcast_message({"type": "log", "message": f"Removed buyer {buyer_identifier} from lot {current_lot.lot_number}"})
+
+    return {"message": f"Removed buyer {buyer_identifier}"}
+
+@app.post("/api/bidder/{bidder_lot_id}/scratch")
+async def scratch_bidder(bidder_lot_id: int, db: Session = Depends(get_db), user: dict = Depends(require_auth)):
+    """Soft-delete a specific bidder entry (the per-row trash icon), leaving
+    it in the database as a scratched/audit record instead of deleting it."""
+    bidder_lot = db.query(BidderLot).filter(BidderLot.id == bidder_lot_id).first()
+    if not bidder_lot:
+        raise HTTPException(status_code=404, detail="Bidder entry not found")
+
+    if bidder_lot.scratched:
+        return {"message": "Already removed"}
+
+    buyer = db.query(Buyer).filter(Buyer.id == bidder_lot.buyer_id).first()
+    buyer_identifier = buyer.identifier if buyer else "Unknown"
+
+    bidder_lot.scratched = True
+    bidder_lot.scratched_at = datetime.utcnow()
+    db.commit()
+
+    await broadcast_state(db)
+    await broadcast_message({"type": "log", "message": f"Removed buyer {buyer_identifier} from lot {bidder_lot.lot.lot_number}"})
+
+    return {"message": f"Removed buyer {buyer_identifier}"}
 
 class MergeRequest(BaseModel):
     source_identifier: int
@@ -609,7 +641,7 @@ async def broadcast_state(db: Session, bid_update=False):
         for bidder in bidders:
             buyer = db.query(Buyer).filter(Buyer.id == bidder.buyer_id).first()
             if buyer:
-                bidder_info.append({"Identifier": buyer.identifier, "Name": buyer.name})
+                bidder_info.append({"Id": bidder.id, "Identifier": buyer.identifier, "Name": buyer.name, "Scratched": bidder.scratched})
 
     message_type = "bid_update" if bid_update else "state"
     state = {"type": message_type, "lot": lot_info, "bidders": bidder_info, "theme": session.theme}

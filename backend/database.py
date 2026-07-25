@@ -117,7 +117,12 @@ class BidderLot(Base):
     buyer_id = Column(Integer, ForeignKey("buyers.id"))
     lot_index = Column(Integer)  # Position in the sale program
     created_at = Column(DateTime, default=datetime.utcnow)
-    
+    # Soft-delete: an "undo" scratches the entry instead of removing it, so
+    # it stays in the database as an auditable record and can still be shown
+    # (struck through) on screens that want to display corrections.
+    scratched = Column(Boolean, default=False)
+    scratched_at = Column(DateTime, nullable=True)
+
     lot = relationship("SaleProgram", back_populates="bidders")
     buyer = relationship("Buyer", back_populates="bids")
 
@@ -135,6 +140,7 @@ def init_database():
     Base.metadata.create_all(bind=engine)
     _ensure_theme_column()
     _ensure_sale_program_columns()
+    _ensure_bidder_lot_columns()
     _ensure_default_admin()
     logger.info("Database initialized")
 
@@ -176,6 +182,18 @@ def _ensure_sale_program_columns():
             conn.execute(text("ALTER TABLE sale_programs ADD COLUMN fairentry_entry_id INTEGER"))
         if "sale_order_id" not in columns:
             conn.execute(text("ALTER TABLE sale_programs ADD COLUMN sale_order_id INTEGER"))
+        conn.commit()
+
+def _ensure_bidder_lot_columns():
+    """create_all() only creates missing tables, not missing columns on
+    existing ones, so add scratched/scratched_at by hand for databases
+    created before they existed."""
+    with engine.connect() as conn:
+        columns = [row[1] for row in conn.execute(text("PRAGMA table_info(bidders_per_lot)"))]
+        if "scratched" not in columns:
+            conn.execute(text("ALTER TABLE bidders_per_lot ADD COLUMN scratched BOOLEAN DEFAULT 0"))
+        if "scratched_at" not in columns:
+            conn.execute(text("ALTER TABLE bidders_per_lot ADD COLUMN scratched_at DATETIME"))
         conn.commit()
 
 def get_active_sale_order_id(db):

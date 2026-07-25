@@ -199,6 +199,11 @@
         top: 0;
     }
 
+    .scratched-row td {
+        color: #dc3545;
+        text-decoration: line-through;
+    }
+
     .empty-message {
         flex: 1;
         display: flex;
@@ -301,7 +306,7 @@
                     </thead>
                     <tbody>
                         {#each currentLot.Bidders as buyer}
-                            <tr><td>{buyer.Identifier}</td><td>{buyer.Name}</td></tr>
+                            <tr class:scratched-row={buyer.Scratched}><td>{buyer.Identifier}</td><td>{buyer.Name}</td></tr>
                         {/each}
                     </tbody>
                 </table>

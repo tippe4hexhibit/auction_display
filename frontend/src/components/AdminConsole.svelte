@@ -92,10 +92,12 @@
         lot = stateData.lot;
         if (stateData.bidders && stateData.bidders.length > 0) {
           bidHistory = stateData.bidders.map(bidder => ({
+            Id: bidder.Id,
             LotNumber: lot.LotNumber,
             StudentName: lot.StudentName,
             BuyerNumber: bidder.Identifier,
-            BuyerName: bidder.Name
+            BuyerName: bidder.Name,
+            Scratched: bidder.Scratched
           }));
         } else {
           bidHistory = [];
@@ -146,10 +148,12 @@
         if (data.type === 'state' || data.type === 'bid_update') {
           if (Array.isArray(data.bidders)) {
             bidHistory = data.bidders.map(bidder => ({
+              Id: bidder.Id,
               LotNumber: lot.LotNumber,
               StudentName: lot.StudentName,
               BuyerNumber: bidder.Identifier,
-              BuyerName: bidder.Name
+              BuyerName: bidder.Name,
+              Scratched: bidder.Scratched
             }));
           } else {
             bidHistory = [];
@@ -202,7 +206,7 @@
         await makeAuthenticatedRequest(`${API_BASE}/api/bidder/add/${bidderNumber}`, { method: 'POST' });
         bidderNumber = '';
       } catch (error) {
-        alert('Failed to add bidder: ' + error.message);
+        alert('Failed to add buyer: ' + error.message);
       }
     }
   }
@@ -257,15 +261,26 @@
       const response = await makeAuthenticatedRequest(`${API_BASE}/api/bidder/undo`, {
         method: 'POST'
       });
-      if (response.ok) {
-        const result = await response.json();
-        alert(result.message);
-      } else {
+      if (!response.ok) {
         const error = await response.json();
         alert(`Undo failed: ${error.detail}`);
       }
     } catch (error) {
       alert('Undo failed: ' + error.message);
+    }
+  }
+
+  async function scratchBidder(bidderLotId) {
+    try {
+      const response = await makeAuthenticatedRequest(`${API_BASE}/api/bidder/${bidderLotId}/scratch`, {
+        method: 'POST'
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        alert(`Remove failed: ${error.detail}`);
+      }
+    } catch (error) {
+      alert('Remove failed: ' + error.message);
     }
   }
 
@@ -442,6 +457,7 @@
       onPrevLot={prevLot}
       onUndoBidder={handleUndoBidder}
       onMergeBidders={handleMergeBidders}
+      onScratchBidder={scratchBidder}
     />
   {:else if currentTab === 'sale'}
     <SaleList

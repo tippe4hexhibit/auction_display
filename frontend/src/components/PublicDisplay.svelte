@@ -56,7 +56,7 @@
             const stateData = await stateRes.json();
             if (stateData.lot) {
                 lot = stateData.lot;
-                bidders = stateData.bidders || [];
+                bidders = (stateData.bidders || []).filter(b => !b.Scratched);
             }
             if (stateData.theme) themeName = stateData.theme;
         } catch (error) {
@@ -69,7 +69,7 @@
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
             if (data.lot) lot = data.lot;
-            if (Array.isArray(data.bidders)) bidders = data.bidders;
+            if (Array.isArray(data.bidders)) bidders = data.bidders.filter(b => !b.Scratched);
             if (data.theme) themeName = data.theme;
             // A FairEntry sale sync (background auto-sync or a manual Sync
             // Now) replaces lot data without a lot-navigation event, so it
